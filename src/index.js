@@ -26,10 +26,11 @@ const server = http.createServer(app);
 
 // Middleware to strip /lead prefix if the app is hosted under a subpath
 app.use((req, res, next) => {
-  if (req.url.startsWith('/lead/')) {
-    req.url = req.url.replace(/^\/lead/, '');
-  } else if (req.url === '/lead') {
-    req.url = '/';
+  console.log(`[Request] ${req.method} ${req.url}`);
+  if (req.url.startsWith('/lead')) {
+    const oldUrl = req.url;
+    req.url = req.url.replace(/^\/lead/, '') || '/';
+    console.log(`[Rewrite] ${oldUrl} -> ${req.url}`);
   }
   next();
 });
