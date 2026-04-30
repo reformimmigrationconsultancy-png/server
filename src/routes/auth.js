@@ -6,7 +6,7 @@ const { protect, adminOnly } = require('../middleware/auth');
 const router = express.Router();
 
 const signToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
+  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
