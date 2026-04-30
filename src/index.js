@@ -283,8 +283,10 @@ app.post('/webhook/whatsapp', async (req, res) => {
 
 
 
-// Health check
-app.get('/', (req, res) => res.send('Server running'));
+// Health check and Redirect
+app.get('/', (req, res) => {
+  res.redirect('/lead/');
+});
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 
