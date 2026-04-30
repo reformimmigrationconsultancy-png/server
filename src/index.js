@@ -26,11 +26,14 @@ const server = http.createServer(app);
 
 // Middleware to strip /lead prefix if the app is hosted under a subpath
 app.use((req, res, next) => {
-  console.log(`[Request] ${req.method} ${req.url}`);
+  // 1. If accessing the root domain directly, redirect to the subpath
+  if (req.url === '/') {
+    return res.redirect('/lead/');
+  }
+
+  // 2. Strip /lead prefix for internal routing
   if (req.url.startsWith('/lead')) {
-    const oldUrl = req.url;
     req.url = req.url.replace(/^\/lead/, '') || '/';
-    console.log(`[Rewrite] ${oldUrl} -> ${req.url}`);
   }
   next();
 });
@@ -283,10 +286,7 @@ app.post('/webhook/whatsapp', async (req, res) => {
 
 
 
-// Health check and Redirect
-app.get('/', (req, res) => {
-  res.redirect('/lead/');
-});
+// Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 
