@@ -123,4 +123,15 @@ router.post('/:id/documents', protect, upload.single('file'), async (req, res) =
   }
 });
 
+// POST /api/clients/sync-meta-leads
+router.post('/sync-meta-leads', protect, async (req, res) => {
+  try {
+    const messenger = require('../services/messenger');
+    const syncedCount = await messenger.syncHistoricalLeads();
+    res.json({ success: true, count: syncedCount });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;

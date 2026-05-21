@@ -19,7 +19,7 @@ const seedDB = async () => {
     await Reminder.deleteMany({});
 
     // 1. Ensure Admin User
-    const adminEmail = 'mpmanpreet5@gmail.com';
+    const adminEmail = 'mortgagewithmanpreet@gmail.com';
     let admin = await User.findOne({ email: adminEmail });
     if (!admin) {
       admin = await User.create({

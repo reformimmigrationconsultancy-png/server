@@ -199,62 +199,47 @@ router.delete('/:id', protect, async (req, res) => {
   }
 });
 
-// Reusable Sync Function
-async function syncPlatformConversations(platform, fetchFn) {
-  const rawConvs = await fetchFn();
-  let importedCount = 0;
+// Proxy Media from Meta (to handle CORS and expired URLs)
+router.get('/proxy-media', protect, async (req, res) => {
+  let { url } = req.query;
+  if (!url) return res.status(400).send('URL is required');
 
-  for (const metaConv of rawConvs) {
-    const participants = metaConv.participants?.data || [];
-    const lastMsg = metaConv.messages?.data?.[0];
-    
-    // Find the participant that isn't the page itself
-    const otherUser = participants.find(p => p.id !== process.env.FB_PAGE_ID);
-    if (!otherUser) continue;
-
-    const psid = otherUser.id;
-
-    // 1. Find or create client
-    let client = await Client.findOne({ platformContactId: psid });
-    if (!client) {
-      client = await Client.create({
-        fullName: otherUser.name || `${platform === 'instagram' ? 'IG' : 'FB'} User ${psid.substring(0, 5)}`,
-        platformContactId: psid,
-        source: platform
-      });
-    }
-
-    // 2. Find or create conversation
-    let conv = await Conversation.findOne({ platformContactId: psid, platform: platform });
-    if (!conv) {
-      conv = await Conversation.create({
-        client: client._id,
-        platform: platform,
-        platformContactId: psid,
-        externalConversationId: metaConv.id,
-        lastMessage: lastMsg?.message || 'Synced conversation',
-        lastMessageAt: new Date(metaConv.updated_time)
-      });
-      importedCount++;
-
-      // 3. Import last message if it exists
-      if (lastMsg) {
-        await Message.create({
-          conversationId: conv._id,
-          sender: lastMsg.from?.id === psid ? 'client' : 'agent',
-          content: lastMsg.message || '[No message content]',
-          createdAt: new Date(lastMsg.created_time || Date.now())
-        });
-      }
-    }
+  // Handle protocol-relative URLs
+  if (url.startsWith('//')) {
+    url = 'https:' + url;
   }
-  return importedCount;
-}
+
+  try {
+    const axios = require('axios');
+    const MessengerService = require('../services/messenger');
+    
+    // Dynamically get the latest valid Page Access Token
+    const token = await MessengerService.getPageAccessToken();
+    
+    console.log(`📡 PROXY | Fetching: ${url.substring(0, 60)}...`);
+
+    const response = await axios.get(url, {
+      params: { access_token: token },
+      responseType: 'stream',
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
+
+    res.set('Content-Type', response.headers['content-type'] || 'audio/ogg');
+    response.data.pipe(res);
+  } catch (err) {
+    console.error('❌ PROXY ERROR:', err.message);
+    // Fallback: If it's a 404 or unauthorized, the URL is likely dead.
+    res.status(404).send('Media not found or token expired');
+  }
+});
 
 // POST /api/conversations/sync/facebook
 router.post('/sync/facebook', protect, async (req, res) => {
   try {
-    const count = await syncPlatformConversations('facebook', () => messenger.fetchFacebookConversations());
+    const count = await messenger.syncPlatform('facebook');
     res.json({ success: true, count, message: `Successfully synced ${count} new Facebook conversations.` });
   } catch (err) {
     console.error('Facebook Sync Error:', err);
@@ -265,7 +250,7 @@ router.post('/sync/facebook', protect, async (req, res) => {
 // POST /api/conversations/sync/instagram
 router.post('/sync/instagram', protect, async (req, res) => {
   try {
-    const count = await syncPlatformConversations('instagram', () => messenger.fetchInstagramConversations());
+    const count = await messenger.syncPlatform('instagram');
     res.json({ success: true, count, message: `Successfully synced ${count} new Instagram conversations.` });
   } catch (err) {
     console.error('Instagram Sync Error:', err);

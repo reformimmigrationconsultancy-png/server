@@ -1,5 +1,7 @@
 const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
+const fs = require('fs');
+const path = require('path');
 const Client = require('../models/Client');
 const { Conversation, Message } = require('../models/Conversation');
 
@@ -27,16 +29,17 @@ class EmailSyncService {
         minVersion: 'TLSv1.2'
       },
       logger: false, 
-      connectionTimeout: 60000,
-      greetingTimeout: 60000,
-      socketTimeout: 60000
+      connectionTimeout: 120000,
+      greetingTimeout: 120000,
+      socketTimeout: 120000
     });
   }
 
   start() {
+    if (this.timer) return; // Prevent multiple intervals
     console.log('📬 Email Polling Service Started...');
     this.sync();
-    // Poll every 5 minutes (reduced frequency for stability)
+    // Poll every 5 minutes
     this.timer = setInterval(() => this.sync(), 300000);
   }
 
@@ -61,6 +64,7 @@ class EmailSyncService {
         const status = await currentClient.status('INBOX', { messages: true });
         const totalMessages = status.messages;
         
+        // Scan the last 500 messages for better performance and safety
         const startSeq = Math.max(1, totalMessages - 500);
         const range = `${startSeq}:*`;
         
@@ -69,6 +73,7 @@ class EmailSyncService {
         const missingUids = [];
         
         // Step 1: Collect UIDs that are not in DB
+        // We fetch UIDs in the range to check which ones we don't have yet
         for await (let message of currentClient.fetch(range, { uid: true })) {
           const messageUid = `email_${message.uid}`;
           const exists = await Message.exists({ externalId: messageUid });
@@ -77,14 +82,14 @@ class EmailSyncService {
           }
         }
         
-        console.log(`ℹ️ Found ${missingUids.length} new emails to process.`);
-        
-        let messagesProcessed = 0;
-        
-        // Step 2: Fetch full sources for missing UIDs in batches of 10 to avoid timeouts
-        if (missingUids.length > 0) {
-          // Process in smaller batches to be safe
-          const batchSize = 20;
+        if (missingUids.length === 0) {
+          console.log('ℹ️ No new emails found.');
+        } else {
+          console.log(`ℹ️ Found ${missingUids.length} new emails to process.`);
+          
+          let messagesProcessed = 0;
+          const batchSize = 10; // Smaller batches for source fetching to prevent timeouts
+          
           for (let i = 0; i < missingUids.length; i += batchSize) {
             const batch = missingUids.slice(i, i + batchSize);
             for await (let message of currentClient.fetch(batch, { source: true, uid: true }, { uid: true })) {
@@ -93,29 +98,40 @@ class EmailSyncService {
                 await this.processIncomingEmail(parsed, message.uid);
                 messagesProcessed++;
               } catch (msgErr) {
-                console.error('❌ Error parsing message UID:', message.uid, msgErr.message);
+                console.error(`❌ Error parsing message UID ${message.uid}:`, msgErr.message);
               }
             }
           }
-        }
-        
-        if (messagesProcessed > 0) {
+          
+          if (messagesProcessed > 0) {
             console.log(`✅ Successfully synced ${messagesProcessed} new emails.`);
+          }
         }
-        
+      } catch (err) {
+        if (err.message.includes('Connection not available')) {
+          console.error('⚠️ IMAP connection lost during sync, will retry next cycle.');
+        } else {
+          console.error('❌ Error during IMAP operation:', err.message);
+        }
       } finally {
-        lock.release();
+        if (lock) lock.release();
       }
 
-      await currentClient.logout();
+      await currentClient.logout().catch(() => {});
     } catch (err) {
-      console.error('❌ IMAP Sync Cycle Error:', err.message);
-      
-      if (err.message.includes('AUTHENTICATE failed')) {
-         console.error('⚠️ CRITICAL: Authentication failed. Please check your credentials in .env.');
+      if (err.message.includes('Socket timeout')) {
+        console.log('ℹ️ IMAP Sync: Socket timed out (common with Gmail idle connections).');
+      } else if (err.message.includes('AUTHENTICATE failed')) {
+        console.error('⚠️ CRITICAL: Authentication failed. Please check your credentials in .env.');
+      } else {
+        console.error('❌ IMAP Sync Cycle Error:', err.message);
       }
     } finally {
       this.isSyncing = false;
+      // Ensure the client is destroyed to free up resources
+      if (currentClient && currentClient.connection && currentClient.connection.socket) {
+        currentClient.connection.socket.destroy();
+      }
     }
   }
 
@@ -187,12 +203,39 @@ class EmailSyncService {
         });
       }
 
+      // Handle attachments
+      const attachments = [];
+      if (email.attachments && email.attachments.length > 0) {
+        const uploadDir = path.join(__dirname, '../../uploads');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+
+        for (const attachment of email.attachments) {
+          try {
+            const filename = `${Date.now()}-${attachment.filename}`;
+            const filepath = path.join(uploadDir, filename);
+            fs.writeFileSync(filepath, attachment.content);
+            
+            const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 8000}`;
+            attachments.push({
+              url: `${baseUrl}/uploads/${filename}`,
+              filename: attachment.filename,
+              mimetype: attachment.contentType
+            });
+          } catch (attErr) {
+            console.error('❌ Error saving attachment:', attErr.message);
+          }
+        }
+      }
+
       const newMessage = await Message.create({
         conversationId: conv._id,
         sender: 'client',
         content: cleanedText,
         messageType: 'email',
-        externalId: messageUid
+        externalId: messageUid,
+        attachments: attachments
       });
 
       await Conversation.findByIdAndUpdate(conv._id, {
@@ -203,8 +246,12 @@ class EmailSyncService {
 
       const io = this.app.get('io');
       if (io) {
-        io.emit('new_message', newMessage); 
-        io.to(conv._id.toString()).emit('new_message', newMessage); 
+        const populatedMessage = await newMessage.populate({
+          path: 'conversationId',
+          populate: { path: 'client' }
+        });
+        io.emit('new_message', populatedMessage); 
+        io.to(conv._id.toString()).emit('new_message', populatedMessage); 
       }
 
       console.log(`📩 Synced Inbound Email from ${fromEmail}`);

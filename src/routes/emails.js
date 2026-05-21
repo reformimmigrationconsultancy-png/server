@@ -63,8 +63,21 @@ router.post('/send', protect, async (req, res) => {
     let finalBody = body;
 
     // Fetch client for template variables
-    const client = await Client.findById(clientId);
-    if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
+    let client;
+    if (clientId) {
+      client = await Client.findById(clientId);
+    } else if (to) {
+      client = await Client.findOne({ email: to.toLowerCase() });
+    }
+
+    if (!client && !to) {
+      return res.status(400).json({ success: false, message: 'Recipient email or Client ID is required' });
+    }
+
+    const recipientEmail = to || client?.email;
+    if (!recipientEmail) {
+      return res.status(400).json({ success: false, message: 'Recipient email not found' });
+    }
 
     if (templateKey && TEMPLATES[templateKey]) {
       const name = client ? client.fullName : 'Valued Customer';
@@ -75,18 +88,28 @@ router.post('/send', protect, async (req, res) => {
     const transporter = getTransporter();
     await transporter.sendMail({
       from: `"Lead CRM" <${process.env.SMTP_USER}>`,
-      to,
+      to: recipientEmail,
       subject: finalSubject,
       text: finalBody,
     });
 
-    // 1. Ensure Conversation exists for logging
+    // 1. Ensure Client exists (create if missing)
+    if (!client) {
+      client = await Client.create({
+        fullName: recipientEmail.split('@')[0],
+        email: recipientEmail,
+        source: 'manual',
+        stage: 'contacted'
+      });
+    }
+
+    // 2. Ensure Conversation exists for logging
     let activeConvId = conversationId;
     if (!activeConvId) {
-      let conv = await Conversation.findOne({ client: clientId, platform: 'email' });
+      let conv = await Conversation.findOne({ client: client._id, platform: 'email' });
       if (!conv) {
         conv = await Conversation.create({
-           client: clientId,
+           client: client._id,
            platform: 'email',
            lastMessage: finalBody.substring(0, 50),
            lastMessageAt: new Date()
@@ -95,7 +118,7 @@ router.post('/send', protect, async (req, res) => {
       activeConvId = conv._id;
     }
 
-    // 2. Log as message in conversation history
+    // 3. Log as message in conversation history
     const msg = await Message.create({
       conversationId: activeConvId,
       sender: 'agent',

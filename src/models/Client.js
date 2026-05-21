@@ -6,16 +6,26 @@ const clientSchema = new mongoose.Schema({
   phone: { type: String, trim: true },
   source: {
     type: String,
-    enum: ['whatsapp', 'facebook', 'instagram', 'email', 'website', 'call', 'manual'],
+    enum: ['whatsapp', 'facebook', 'instagram', 'email', 'website', 'call', 'manual', 'google'],
     default: 'manual'
   },
   platformContactId: { type: String }, // PSID for Facebook, Phone for WhatsApp
-  externalId: { type: String },
+  externalId: { type: String, unique: true, sparse: true, index: true },
 
   stage: {
     type: String,
     enum: ['new_lead', 'contacted', 'interested', 'documents_received', 'approved', 'closed'],
     default: 'new_lead'
+  },
+  metaData: {
+    campaignName: String,
+    adSetName: String,
+    adName: String,
+    pageName: String,
+    formName: String,
+    customFields: mongoose.Schema.Types.Mixed,
+    rawData: mongoose.Schema.Types.Mixed,
+    webhookTimestamp: Date
   },
   tags: [{ type: String }],
   notes: [{

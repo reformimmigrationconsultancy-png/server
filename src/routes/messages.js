@@ -25,6 +25,27 @@ router.get('/messages', protect, async (req, res) => {
   }
 });
 
+
+/**
+ * @route   GET /api/sent
+ * @desc    Get all messages sent by agent
+ * @access  Private
+ */
+router.get('/sent', protect, async (req, res) => {
+  try {
+    const messages = await Message.find({ sender: 'agent' })
+      .populate({
+        path: 'conversationId',
+        populate: { path: 'client' }
+      })
+      .sort({ createdAt: -1 })
+      .limit(100);
+    res.json({ success: true, messages });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 /**
  * @route   GET /api/messages/:senderId
  * @desc    Get conversation thread by senderId (platformContactId)
