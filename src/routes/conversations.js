@@ -106,7 +106,7 @@ router.post('/:id/messages', protect, async (req, res) => {
             localFilePath = path.join(__dirname, '..', '..', 'uploads', filename);
           }
 
-          await messenger.sendFacebookMessage(recipientId, content, imageUrl, localFilePath, conv.platform);
+          await messenger.sendFacebookMessage(recipientId, content, imageUrl, localFilePath);
           console.log(`✅ ${conv.platform} outbound message relay successful for ${recipientId}`);
        } else {
           console.warn(`⚠️ Cannot relay to ${conv.platform}: ${!recipientId ? 'Missing ID' : 'Simulated/Invalid ID (' + recipientId + ')'}`);
@@ -158,7 +158,11 @@ router.post('/:id/messages', protect, async (req, res) => {
     console.error('❌ Message Relay Error:', errorDetail);
     
     // Check if it's a 24h window error
-    if (errorDetail.includes('outside of allowed window')) {
+    const is24hError = errorDetail.includes('outside of allowed window') || 
+                       errorDetail.includes('24 hour messaging window') || 
+                       errorDetail.includes('24-hour') || 
+                       errorDetail.includes('131047');
+    if (is24hError) {
       return res.status(403).json({ 
         success: false, 
         message: 'Messaging window closed. You can only reply within 24 hours of the customer\'s last message.' 

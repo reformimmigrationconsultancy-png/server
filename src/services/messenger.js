@@ -132,7 +132,7 @@ class MessengerService {
   /**
    * Send a Facebook Messenger message via Meta Graph API
    */
-  async sendFacebookMessage(recipientId, content, imageUrl = null, localFilePath = null, platform = 'facebook') {
+  async sendFacebookMessage(recipientId, content, imageUrl = null, localFilePath = null) {
     try {
       const token = await this.getPageAccessToken();
       if (!token) throw new Error('Could not obtain Page Access Token');
@@ -140,21 +140,12 @@ class MessengerService {
       let data;
       let headers = {};
 
-      const isFb = platform === 'facebook';
-
       if (localFilePath) {
         // Send image as a file (Form-Data)
         const fs = require('fs');
         const FormData = require('form-data');
         const form = new FormData();
-        
-        if (isFb) {
-          form.append('messaging_type', 'MESSAGE_TAG');
-          form.append('tag', 'HUMAN_AGENT');
-        } else {
-          form.append('messaging_type', 'RESPONSE');
-        }
-        
+        form.append('messaging_type', 'RESPONSE');
         form.append('recipient', JSON.stringify({ id: recipientId }));
         form.append('message', JSON.stringify({
           attachment: {
@@ -169,7 +160,7 @@ class MessengerService {
       } else if (imageUrl) {
         // Send image via URL
         data = {
-          messaging_type: isFb ? 'MESSAGE_TAG' : 'RESPONSE',
+          messaging_type: 'RESPONSE',
           recipient: { id: recipientId },
           message: {
             attachment: {
@@ -178,19 +169,13 @@ class MessengerService {
             }
           }
         };
-        if (isFb) {
-          data.tag = 'HUMAN_AGENT';
-        }
       } else {
         // Send text only
         data = {
-          messaging_type: isFb ? 'MESSAGE_TAG' : 'RESPONSE',
+          messaging_type: 'RESPONSE',
           recipient: { id: recipientId },
           message: { text: content }
         };
-        if (isFb) {
-          data.tag = 'HUMAN_AGENT';
-        }
       }
 
       const response = await axios.post(
