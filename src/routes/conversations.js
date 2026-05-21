@@ -106,7 +106,7 @@ router.post('/:id/messages', protect, async (req, res) => {
             localFilePath = path.join(__dirname, '..', '..', 'uploads', filename);
           }
 
-          await messenger.sendFacebookMessage(recipientId, content, imageUrl, localFilePath);
+          await messenger.sendFacebookMessage(recipientId, content, imageUrl, localFilePath, conv.platform);
           console.log(`✅ ${conv.platform} outbound message relay successful for ${recipientId}`);
        } else {
           console.warn(`⚠️ Cannot relay to ${conv.platform}: ${!recipientId ? 'Missing ID' : 'Simulated/Invalid ID (' + recipientId + ')'}`);
