@@ -92,11 +92,17 @@ router.post('/:id/messages', protect, async (req, res) => {
 
     // 1. External Relay (Send to actual WhatsApp/Facebook)
     if (conv.platform === 'whatsapp' && conv.client?.phone) {
-       await messenger.sendWhatsAppMessage(conv.client.phone, content);
-       console.log(`✅ WhatsApp outbound message sent to ${conv.client.phone}`);
+       if (process.env.MOCK_META_SEND === 'true') {
+          console.log(`[MOCK SEND] Simulating WhatsApp send to ${conv.client.phone}: "${content}"`);
+       } else {
+          await messenger.sendWhatsAppMessage(conv.client.phone, content);
+          console.log(`✅ WhatsApp outbound message sent to ${conv.client.phone}`);
+       }
     } else if (conv.platform === 'facebook' || conv.platform === 'instagram') {
        const recipientId = conv.platformContactId || conv.client?.platformContactId;
-       if (recipientId && !recipientId.includes('user_')) {
+       if (process.env.MOCK_META_SEND === 'true') {
+          console.log(`[MOCK SEND] Simulating ${conv.platform} send to ${recipientId}: "${content}"`);
+       } else if (recipientId && !recipientId.includes('user_')) {
           const imageUrl = req.body.imageUrl || (req.body.attachments && req.body.attachments[0]?.url);
           let localFilePath = null;
           
@@ -204,13 +210,30 @@ router.delete('/:id', protect, async (req, res) => {
 });
 
 // Proxy Media from Meta (to handle CORS and expired URLs)
-router.get('/proxy-media', protect, async (req, res) => {
+router.get('/proxy-media', async (req, res) => {
   let { url } = req.query;
   if (!url) return res.status(400).send('URL is required');
 
   // Handle protocol-relative URLs
   if (url.startsWith('//')) {
     url = 'https:' + url;
+  }
+
+  // Security check: Only proxy media from Meta/Facebook/Instagram domains to prevent open proxy abuse
+  try {
+    const parsedUrl = new URL(url);
+    const host = parsedUrl.hostname.toLowerCase();
+    const isAllowedDomain = host.endsWith('fbcdn.net') || 
+                            host.endsWith('facebook.com') || 
+                            host.endsWith('instagram.com') || 
+                            host.endsWith('whatsapp.net') ||
+                            host.endsWith('cdninstagram.com') ||
+                            host.endsWith('fbsbx.com');
+    if (!isAllowedDomain) {
+      return res.status(403).send('Access denied: Unauthorized proxy domain');
+    }
+  } catch (urlErr) {
+    return res.status(400).send('Invalid URL format');
   }
 
   try {
@@ -243,7 +266,7 @@ router.get('/proxy-media', protect, async (req, res) => {
 // POST /api/conversations/sync/facebook
 router.post('/sync/facebook', protect, async (req, res) => {
   try {
-    const count = await messenger.syncPlatform('facebook');
+    const count = await messenger.syncPlatform('facebook', req.app);
     res.json({ success: true, count, message: `Successfully synced ${count} new Facebook conversations.` });
   } catch (err) {
     console.error('Facebook Sync Error:', err);
@@ -254,7 +277,7 @@ router.post('/sync/facebook', protect, async (req, res) => {
 // POST /api/conversations/sync/instagram
 router.post('/sync/instagram', protect, async (req, res) => {
   try {
-    const count = await messenger.syncPlatform('instagram');
+    const count = await messenger.syncPlatform('instagram', req.app);
     res.json({ success: true, count, message: `Successfully synced ${count} new Instagram conversations.` });
   } catch (err) {
     console.error('Instagram Sync Error:', err);

@@ -11,6 +11,20 @@ if (fs.existsSync(rootEnvPath)) {
 } else {
   require('dotenv').config();
 }
+
+// Sanitize environment variables to prevent copy-paste errors from Render dashboard configurations
+Object.keys(process.env).forEach(key => {
+  let value = process.env[key];
+  if (value && typeof value === 'string') {
+    value = value.trim();
+    const prefix = `${key}=`;
+    if (value.startsWith(prefix)) {
+      process.env[key] = value.substring(prefix.length).trim();
+      console.log(`🧹 [Env Sanitizer] Cleaned copy-paste prefix from environment variable: ${key}`);
+    }
+  }
+});
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -688,18 +702,18 @@ const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   
-  // Background Auto-Sync (Every 10 minutes)
-  // This keeps the CRM updated even without manual sync button clicks
+  // Background Auto-Sync (Every 15 seconds for real-time delivery)
+  // This keeps the CRM updated in near real-time even without webhooks or manual sync clicks
   setInterval(async () => {
     try {
       const messenger = require('./services/messenger');
-      await messenger.syncAll();
+      await messenger.syncAll(app);
     } catch (err) {
       console.error('❌ [Background Sync] Error:', err.message);
     }
-  }, 10 * 60 * 1000); // 10 minutes
+  }, 15 * 1000); // 15 seconds
 });
-// Trigger nodemon restart: Meta Ads fully configured and active.
+// Trigger nodemon restart: Meta Ads fully configured and active with permanent page token.
 
 
 

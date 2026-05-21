@@ -133,7 +133,7 @@ class MessengerService {
    * Send a Facebook Messenger message via Meta Graph API
    */
   async sendFacebookMessage(recipientId, content, imageUrl = null, localFilePath = null) {
-    try {
+    const sendRequest = async (isRetryWithTag = false) => {
       const token = await this.getPageAccessToken();
       if (!token) throw new Error('Could not obtain Page Access Token');
 
@@ -145,7 +145,12 @@ class MessengerService {
         const fs = require('fs');
         const FormData = require('form-data');
         const form = new FormData();
-        form.append('messaging_type', 'RESPONSE');
+        if (isRetryWithTag) {
+          form.append('messaging_type', 'MESSAGE_TAG');
+          form.append('tag', 'HUMAN_AGENT');
+        } else {
+          form.append('messaging_type', 'RESPONSE');
+        }
         form.append('recipient', JSON.stringify({ id: recipientId }));
         form.append('message', JSON.stringify({
           attachment: {
@@ -160,7 +165,7 @@ class MessengerService {
       } else if (imageUrl) {
         // Send image via URL
         data = {
-          messaging_type: 'RESPONSE',
+          messaging_type: isRetryWithTag ? 'MESSAGE_TAG' : 'RESPONSE',
           recipient: { id: recipientId },
           message: {
             attachment: {
@@ -169,16 +174,22 @@ class MessengerService {
             }
           }
         };
+        if (isRetryWithTag) {
+          data.tag = 'HUMAN_AGENT';
+        }
       } else {
         // Send text only
         data = {
-          messaging_type: 'RESPONSE',
+          messaging_type: isRetryWithTag ? 'MESSAGE_TAG' : 'RESPONSE',
           recipient: { id: recipientId },
           message: { text: content }
         };
+        if (isRetryWithTag) {
+          data.tag = 'HUMAN_AGENT';
+        }
       }
 
-      const response = await axios.post(
+      return axios.post(
         `https://graph.facebook.com/v18.0/${this.pageId}/messages`,
         data,
         {
@@ -186,12 +197,37 @@ class MessengerService {
           headers: headers
         }
       );
+    };
+
+    try {
+      // First attempt: standard RESPONSE type
+      const response = await sendRequest(false);
       console.log(`✅ [MessengerService] Facebook API Success:`, response.data);
       return response.data;
     } catch (error) {
       const errorDetail = error.response?.data || error.message;
+      const errorMessage = errorDetail.error?.message || error.message;
+      
+      const is24hError = errorMessage.includes('outside of allowed window') || 
+                         errorMessage.includes('24 hour messaging window') || 
+                         errorMessage.includes('24-hour') || 
+                         errorDetail.error?.code === 10;
+      
+      if (is24hError) {
+        console.warn(`⚠️ [MessengerService] 24h window limit hit. Retrying with HUMAN_AGENT message tag...`);
+        try {
+          const retryResponse = await sendRequest(true);
+          console.log(`✅ [MessengerService] Facebook API Success (Retry with HUMAN_AGENT):`, retryResponse.data);
+          return retryResponse.data;
+        } catch (retryError) {
+          const retryErrorDetail = retryError.response?.data || retryError.message;
+          console.error('❌ Facebook API Retry Error Details:', JSON.stringify(retryErrorDetail, null, 2));
+          throw new Error(`Facebook API Error (with HUMAN_AGENT tag): ${retryErrorDetail.error?.message || retryError.message}`);
+        }
+      }
+
       console.error('❌ Facebook API Error Details:', JSON.stringify(errorDetail, null, 2));
-      throw new Error(`Facebook API Error: ${errorDetail.error?.message || error.message}`);
+      throw new Error(`Facebook API Error: ${errorMessage}`);
     }
   }
 
@@ -244,10 +280,10 @@ class MessengerService {
    * Sync all platforms (Facebook & Instagram)
    * This is used for background auto-sync
    */
-  async syncAll() {
+  async syncAll(app = null) {
     console.log('🔄 [MessengerService] Starting full sync...');
-    const fbCount = await this.syncPlatform('facebook');
-    const igCount = await this.syncPlatform('instagram');
+    const fbCount = await this.syncPlatform('facebook', app);
+    const igCount = await this.syncPlatform('instagram', app);
     console.log(`✅ [MessengerService] Full sync complete. Imported: FB(${fbCount}), IG(${igCount})`);
     return { fbCount, igCount };
   }
@@ -255,7 +291,7 @@ class MessengerService {
   /**
    * Reusable sync logic for a specific platform
    */
-  async syncPlatform(platform) {
+  async syncPlatform(platform, app = null) {
     try {
       const rawConvs = platform === 'instagram' ? await this.fetchInstagramConversations() : await this.fetchFacebookConversations();
       let importedCount = 0;
@@ -335,7 +371,7 @@ class MessengerService {
             else if (isVideo) messageType = 'video';
             else if (isImage) messageType = 'image';
 
-            await Message.create({
+            const newMessageDoc = await Message.create({
               conversationId: conv._id,
               sender: lastMsg.from?.id === psid ? 'client' : 'agent',
               content: lastMsg.message || (attachments.length > 0 ? `[${messageType.toUpperCase()}]` : '[No content]'),
@@ -344,6 +380,18 @@ class MessengerService {
               externalId: lastMsg.id,
               createdAt: new Date(lastMsg.created_time || Date.now())
             });
+
+            if (app) {
+              const io = app.get('io');
+              if (io) {
+                const populated = await newMessageDoc.populate({
+                  path: 'conversationId',
+                  populate: { path: 'client' }
+                });
+                io.emit('new_message', populated);
+                io.to(conv._id.toString()).emit('new_message', populated);
+              }
+            }
             importedCount++;
           }
         }
