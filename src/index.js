@@ -36,15 +36,11 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
-// Middleware to strip /lead prefix if the app is hosted under a subpath
+// Middleware to log requests and strip /lead prefix if present
 app.use((req, res, next) => {
   console.log(`🔍 [REQUEST] ${req.method} ${req.url}`);
-  // 1. If accessing the root domain directly, redirect to the subpath
-  if (req.url === '/') {
-    return res.redirect('/lead/');
-  }
 
-  // 2. Strip /lead prefix for internal routing
+  // Strip /lead prefix for internal routing if it exists
   if (req.url.startsWith('/lead')) {
     req.url = req.url.replace(/^\/lead/, '') || '/';
   }
