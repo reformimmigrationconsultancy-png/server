@@ -54,6 +54,8 @@ const allowedOrigins = [
   'http://localhost:5175',
   'http://localhost:5176',
   'http://localhost:8000',
+  'https://manpreetcrm.com',
+  'https://www.manpreetcrm.com',
   process.env.CLIENT_URL,
   process.env.PUBLIC_URL
 ].filter(Boolean);
