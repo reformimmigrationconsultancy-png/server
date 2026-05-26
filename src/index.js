@@ -692,10 +692,10 @@ io.on('connection', (socket) => {
   });
 });
 
-// IMAP Sync (Incoming Email Service) - Disabled to keep CRM clean (Meta Ads only)
-// const EmailSyncService = require('./services/emailSync');
-// const emailSync = new EmailSyncService(app);
-// emailSync.start();
+// IMAP Sync (Incoming Email Service)
+const EmailSyncService = require('./services/emailSync');
+const emailSync = new EmailSyncService(app);
+emailSync.start();
 
 
 const PORT = process.env.PORT || 8000;

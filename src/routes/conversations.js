@@ -102,7 +102,7 @@ router.post('/:id/messages', protect, async (req, res) => {
        const recipientId = conv.platformContactId || conv.client?.platformContactId;
        if (process.env.MOCK_META_SEND === 'true') {
           console.log(`[MOCK SEND] Simulating ${conv.platform} send to ${recipientId}: "${content}"`);
-       } else if (recipientId && !recipientId.includes('user_')) {
+        } else if (recipientId && !recipientId.includes('user_')) {
           const imageUrl = req.body.imageUrl || (req.body.attachments && req.body.attachments[0]?.url);
           let localFilePath = null;
           
@@ -112,8 +112,37 @@ router.post('/:id/messages', protect, async (req, res) => {
             localFilePath = path.join(__dirname, '..', '..', 'uploads', filename);
           }
 
-          await messenger.sendFacebookMessage(recipientId, content, imageUrl, localFilePath);
-          console.log(`✅ ${conv.platform} outbound message relay successful for ${recipientId}`);
+          try {
+            await messenger.sendFacebookMessage(recipientId, content, imageUrl, localFilePath);
+            console.log(`✅ ${conv.platform} outbound message relay successful for ${recipientId}`);
+          } catch (fbErr) {
+            const errString = fbErr.message || '';
+            const is24h = errString.includes('outside of allowed window') || errString.includes('24 hour') || errString.includes('24-hour') || errString.includes('131047');
+            
+            if (is24h && conv.client?.email) {
+              console.log('⚠️ 24h window closed. Falling back to email for Meta lead...');
+              
+              const transporter = nodemailer.createTransport({
+                 host: process.env.SMTP_HOST || 'smtp.gmail.com',
+                 port: Number(process.env.SMTP_PORT) || 587,
+                 secure: false,
+                 auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+                 tls: { rejectUnauthorized: false }
+              });
+              
+              await transporter.sendMail({
+                 from: `"Manpreet CRM" <${process.env.SMTP_USER}>`,
+                 to: conv.client.email,
+                 subject: `Following up on your inquiry`,
+                 text: content
+              });
+              
+              // Append a note so the agent knows how it was delivered
+              content = `[Delivered via Email: Facebook 24h window closed]\n\n` + content;
+            } else {
+              throw fbErr; // No email or different error, rethrow to show popup
+            }
+          }
        } else {
           console.warn(`⚠️ Cannot relay to ${conv.platform}: ${!recipientId ? 'Missing ID' : 'Simulated/Invalid ID (' + recipientId + ')'}`);
           // We still allow it to be saved internally as a log
@@ -171,7 +200,7 @@ router.post('/:id/messages', protect, async (req, res) => {
     if (is24hError) {
       return res.status(403).json({ 
         success: false, 
-        message: 'Messaging window closed. You can only reply within 24 hours of the customer\'s last message.' 
+        message: 'Meta Policy: You can only reply within 24 hours of the customer\'s last message. To bypass this in the future, please apply for the "Human Agent" permission in your Meta Developer App Dashboard.' 
       });
     }
 

@@ -147,7 +147,7 @@ class MessengerService {
         const form = new FormData();
         if (isRetryWithTag) {
           form.append('messaging_type', 'MESSAGE_TAG');
-          form.append('tag', 'HUMAN_AGENT');
+          form.append('tag', 'ACCOUNT_UPDATE');
         } else {
           form.append('messaging_type', 'RESPONSE');
         }
@@ -175,7 +175,7 @@ class MessengerService {
           }
         };
         if (isRetryWithTag) {
-          data.tag = 'HUMAN_AGENT';
+          data.tag = 'ACCOUNT_UPDATE';
         }
       } else {
         // Send text only
@@ -185,7 +185,7 @@ class MessengerService {
           message: { text: content }
         };
         if (isRetryWithTag) {
-          data.tag = 'HUMAN_AGENT';
+          data.tag = 'ACCOUNT_UPDATE';
         }
       }
 
@@ -214,15 +214,15 @@ class MessengerService {
                          errorDetail.error?.code === 10;
       
       if (is24hError) {
-        console.warn(`⚠️ [MessengerService] 24h window limit hit. Retrying with HUMAN_AGENT message tag...`);
+        console.warn(`⚠️ [MessengerService] 24h window limit hit. Retrying with ACCOUNT_UPDATE message tag...`);
         try {
           const retryResponse = await sendRequest(true);
-          console.log(`✅ [MessengerService] Facebook API Success (Retry with HUMAN_AGENT):`, retryResponse.data);
+          console.log(`✅ [MessengerService] Facebook API Success (Retry with ACCOUNT_UPDATE):`, retryResponse.data);
           return retryResponse.data;
         } catch (retryError) {
           const retryErrorDetail = retryError.response?.data || retryError.message;
           console.error('❌ Facebook API Retry Error Details:', JSON.stringify(retryErrorDetail, null, 2));
-          throw new Error(`Facebook API Error (with HUMAN_AGENT tag): ${retryErrorDetail.error?.message || retryError.message}`);
+          throw new Error(`Facebook API Error (with ACCOUNT_UPDATE tag): ${retryErrorDetail.error?.message || retryError.message}`);
         }
       }
 

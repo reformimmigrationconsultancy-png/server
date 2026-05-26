@@ -147,21 +147,24 @@ class EmailSyncService {
       const fromEmail = email.from.value[0].address.toLowerCase();
       const text = email.text || email.textAsHtml || '';
 
-      // === SPAM FILTERS DISABLED BY USER REQUEST TO SHOW ALL DATA ===
-      /*
-      const noReplyKeywords = ['no-reply', 'noreply', 'donotreply', 'updates', 'alerts', 'marketing', 'newsletter', 'hello@', 'info@'];
+      const noReplyKeywords = [
+        'no-reply', 'noreply', 'donotreply', 'updates', 'alerts', 'marketing', 'newsletter', 
+        'hello@', 'info@', 'notify', 'catch@', 'businessprofile', 'recommendations@', 'notification@', 'maccount@'
+      ];
       if (noReplyKeywords.some(keyword => fromEmail.includes(keyword))) {
         console.log(`⏩ Filtered out system/automated email from ${fromEmail}`);
         return;
       }
 
-      const spamDomains = ['linkedin.com', 'simplilearnmailer.com', 'foundit', 'bayt.com', 'unstop.com', 'naukri.com', 'mailer'];
+      const spamDomains = [
+        'linkedin.com', 'simplilearnmailer.com', 'foundit', 'bayt.com', 'unstop.com', 
+        'naukri.com', 'mailer', 'tiktok.com', 'pinterest.com', 'ccsend.com', 'facebook.com', 
+        'neofinancial.com', 'google.com', 'microsoft.com', 'metamail.com', 'interac.ca', 'openai.com'
+      ];
       if (spamDomains.some(domain => fromEmail.includes(domain))) {
         console.log(`⏩ Filtered out promotional domain email from ${fromEmail}`);
         return;
       }
-      */
-      // === END SPAM/PROMOTIONAL EMAIL FILTER ===
 
       let client = await Client.findOne({ email: fromEmail });
       if (!client) {

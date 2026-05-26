@@ -54,6 +54,22 @@ router.get('/templates', protect, (req, res) => {
   res.json({ success: true, templates: Object.keys(TEMPLATES).map(key => ({ key, ...TEMPLATES[key] })) });
 });
 
+// GET /api/emails/all
+router.get('/all', protect, async (req, res) => {
+  try {
+    const messages = await Message.find({ messageType: 'email' })
+      .populate({
+        path: 'conversationId',
+        populate: { path: 'client' }
+      })
+      .sort({ createdAt: -1 })
+      .limit(200);
+    res.json({ success: true, messages });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/emails/send
 router.post('/send', protect, async (req, res) => {
   try {
@@ -142,5 +158,61 @@ router.post('/send', protect, async (req, res) => {
   }
 });
 
+// GET /api/emails/sync
+router.get('/sync', protect, async (req, res) => {
+  try {
+    const EmailSyncService = require('../services/emailSync');
+    // Instead of instantiating anew, it's better to just call sync on a temporary instance 
+    // or trigger a background sync.
+    const tempSync = new EmailSyncService(req.app);
+    // Don't await the whole sync if it takes too long, but we can await it for immediate feedback.
+    await tempSync.sync();
+    
+    // After sync, return the latest emails
+    const messages = await Message.find({ messageType: 'email' })
+      .populate({
+        path: 'conversationId',
+        populate: { path: 'client' }
+      })
+      .sort({ createdAt: -1 })
+      .limit(200);
+      
+    res.json({ success: true, messages });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/emails/read/:id
+router.put('/read/:id', protect, async (req, res) => {
+  try {
+    const msgId = req.params.id;
+    const msg = await Message.findByIdAndUpdate(msgId, { read: true }, { new: true });
+    
+    // Also update conversation unreadCount if needed
+    if (msg && msg.conversationId) {
+       const conv = await Conversation.findById(msg.conversationId);
+       if (conv && conv.unreadCount > 0) {
+         conv.unreadCount -= 1;
+         await conv.save();
+       }
+    }
+
+    res.json({ success: true, message: msg });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/emails/:id
+router.delete('/:id', protect, async (req, res) => {
+  try {
+    const msgId = req.params.id;
+    await Message.findByIdAndDelete(msgId);
+    res.json({ success: true, message: 'Email deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 module.exports = router;
