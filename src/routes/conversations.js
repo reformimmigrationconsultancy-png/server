@@ -86,7 +86,7 @@ router.get('/:id/messages', protect, async (req, res) => {
 // POST /api/conversations/:id/messages (AGENT SENDING MESSAGE)
 router.post('/:id/messages', protect, async (req, res) => {
   try {
-    const { content, messageType = 'text' } = req.body;
+    let { content, messageType = 'text' } = req.body;
     const conv = await Conversation.findById(req.params.id).populate('client');
     if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' });
 
