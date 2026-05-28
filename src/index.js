@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 // FORCE SET META TOKEN FOR LIVE SERVER (Render)
-process.env.META_ACCESS_TOKEN = 'EAAfxrZAOI5cUBRjFhFULjP7gEi45oXYuchhXglUZADaVjSMevVpjD91r6oXHDrZA6PjZCZA1DyKUwuWemVtp2okfHe8vaKZAzMXrZBOJoZBFEudfwMfyR6HZB9xg9jV0whlbCqsPn2x3Hl42t24J7tvdy7gYEifOQX6QySVHcB3og22CZBInN2V27pxdAHuKRE';
+process.env.META_ACCESS_TOKEN = 'EAAfxrZAOI5cUBRnT1DwR3NcSIipQUA8Vz588kmeBXCB736wSmPaDcZBe6kkEKTPN91bFHTcfCd6gPA7Oqm5AjsWBT13shxaRyC9eLcKDAJUpM6SmPsNVvOuPnkaXBhWBdqzcPXXGNxrU8c7bJO4qC4bRjSNRl5I1Q8JRyZAkTYOwVBGC8EznyALWLSlHrcicXAlBze5';
 process.env.META_PAGE_ACCESS_TOKEN = '';
 
 const rootEnvPath = path.join(__dirname, '..', '..', '.env');
