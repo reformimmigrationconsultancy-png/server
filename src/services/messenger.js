@@ -222,7 +222,7 @@ class MessengerService {
         } catch (retryError) {
           const retryErrorDetail = retryError.response?.data || retryError.message;
           console.error('❌ Facebook API Retry Error Details:', JSON.stringify(retryErrorDetail, null, 2));
-          throw new Error(`Facebook API Error (with HUMAN_AGENT tag): ${retryErrorDetail.error?.message || retryError.message}`);
+          throw new Error(`Facebook API Error (24-hour window / HUMAN_AGENT rejected): ${retryErrorDetail.error?.message || retryError.message}`);
         }
       }
 
