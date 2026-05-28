@@ -139,8 +139,11 @@ router.post('/:id/messages', protect, async (req, res) => {
               
               // Append a note so the agent knows how it was delivered
               content = `[Delivered via Email: Facebook 24h window closed]\n\n` + content;
+            } else if (is24h) {
+              console.warn('⚠️ 24h window closed and no email. Saving as internal note only.');
+              content = `[Not Delivered to FB: 24h window closed]\n\n` + content;
             } else {
-              throw fbErr; // No email or different error, rethrow to show popup
+              throw fbErr; // Different error, rethrow to show popup
             }
           }
        } else {
