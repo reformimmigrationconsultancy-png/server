@@ -39,8 +39,8 @@ class EmailSyncService {
     if (this.timer) return; // Prevent multiple intervals
     console.log('📬 Email Polling Service Started...');
     this.sync();
-    // Poll every 15 seconds for real-time inbox synchronization
-    this.timer = setInterval(() => this.sync(), 15000);
+    // Poll every 5 seconds for ultra-fast real-time inbox synchronization
+    this.timer = setInterval(() => this.sync(), 5000);
   }
 
   async sync() {

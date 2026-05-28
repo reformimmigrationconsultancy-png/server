@@ -711,7 +711,7 @@ server.listen(PORT, () => {
     } catch (err) {
       console.error('❌ [Background Sync] Error:', err.message);
     }
-  }, 15 * 1000); // 15 seconds
+  }, 5000); // 5 seconds
 });
 // Trigger nodemon restart: Meta Ads fully configured and active with permanent page token.
 
