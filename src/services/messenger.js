@@ -601,8 +601,9 @@ class MessengerService {
       console.log(`✅ [MessengerService] Historical lead sync complete. Total new leads: ${totalSynced}`);
       return totalSynced;
     } catch (error) {
-      console.error('❌ [MessengerService] Historical Lead Sync Error:', error.message);
-      throw error;
+      const errorMsg = error.response?.data?.error?.message || error.message;
+      console.error('❌ [MessengerService] Historical Lead Sync Error:', error.response?.data || error.message);
+      throw new Error(`Meta API Error: ${errorMsg}`);
     }
   }
 }

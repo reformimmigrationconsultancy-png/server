@@ -51,6 +51,7 @@ router.get('/', protect, async (req, res) => {
 router.post('/', protect, async (req, res) => {
   try {
     const client = await Client.create({ ...req.body });
+    req.app.get('io')?.emit('new_lead', client);
     res.status(201).json({ success: true, client });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -75,6 +76,7 @@ router.put('/:id', protect, async (req, res) => {
   try {
     const client = await Client.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
+    req.app.get('io')?.emit('update_lead', client);
     res.json({ success: true, client });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -130,7 +132,8 @@ router.post('/sync-meta-leads', protect, async (req, res) => {
     const syncedCount = await messenger.syncHistoricalLeads();
     res.json({ success: true, count: syncedCount });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('❌ Meta Sync Endpoint Error:', err);
+    res.status(500).json({ success: false, message: err.message || 'Internal Server Error during Meta Sync' });
   }
 });
 

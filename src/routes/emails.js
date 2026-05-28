@@ -204,7 +204,29 @@ router.put('/read/:id', protect, async (req, res) => {
   }
 });
 
-// DELETE /api/emails/:id
+// PUT /api/emails/trash/:id
+router.put('/trash/:id', protect, async (req, res) => {
+  try {
+    const msgId = req.params.id;
+    const msg = await Message.findByIdAndUpdate(msgId, { isTrash: true }, { new: true });
+    res.json({ success: true, message: msg });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/emails/untrash/:id
+router.put('/untrash/:id', protect, async (req, res) => {
+  try {
+    const msgId = req.params.id;
+    const msg = await Message.findByIdAndUpdate(msgId, { isTrash: false }, { new: true });
+    res.json({ success: true, message: msg });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/emails/:id (Permanent Delete)
 router.delete('/:id', protect, async (req, res) => {
   try {
     const msgId = req.params.id;

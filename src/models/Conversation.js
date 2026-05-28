@@ -20,6 +20,7 @@ const messageSchema = new mongoose.Schema({
   }],
   externalId: { type: String }, // ID from WhatsApp/FB/IG
   read: { type: Boolean, default: false },
+  isTrash: { type: Boolean, default: false },
   sentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // if agent sent it
 }, { timestamps: true });
 
