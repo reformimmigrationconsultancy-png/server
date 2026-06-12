@@ -636,6 +636,33 @@ setTimeout(() => {
   setInterval(runMetaLeadsSync, 10 * 60 * 1000);
 }, 10000);
 
+// Render 24/7 Keep-Alive Self-Ping Service
+const axios = require('axios');
+function startSelfPing() {
+  const url = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL;
+  if (!url) {
+    console.log('⚠️ [Keep-Alive] No RENDER_EXTERNAL_URL or PUBLIC_URL defined in environment. Keep-alive ping skipped.');
+    return;
+  }
+  
+  const pingUrl = `${url.replace(/\/$/, '')}/health`;
+  console.log(`🚀 [Keep-Alive] Starting 24/7 keep-alive ping service for URL: ${pingUrl}`);
+  
+  // Ping every 10 minutes (600,000 ms) to keep Render service awake
+  setInterval(async () => {
+    try {
+      console.log(`📡 [Keep-Alive] Sending self-ping to preserve active state...`);
+      const response = await axios.get(pingUrl);
+      console.log(`✅ [Keep-Alive] Ping successful! Server status: ${response.data?.status || 'OK'}`);
+    } catch (err) {
+      console.error(`❌ [Keep-Alive] Self-ping failed:`, err.message);
+    }
+  }, 10 * 60 * 1000);
+}
+
+// Start keep-alive service 15 seconds after server boot
+setTimeout(startSelfPing, 15000);
+
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
