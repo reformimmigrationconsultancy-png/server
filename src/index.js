@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-// FORCE SET META TOKEN FOR LIVE SERVER (Render)
-process.env.META_ACCESS_TOKEN = 'EAAfxrZAOI5cUBRl1jWnAHaAJd95xMzWa2dTqJBU5y2fk71UM7s6bl0kzCOMfZAHyyZC8ytTHhKoqAJ9ZA0IVD5PQEFQelqLt6EnavjK5pV5cfQvmc5Dm5KPfUfZBOsKfzHfiPdBmzPQBOI0XUsjFEzB7C5GM3DiJlCDccD7eZARUTn2SZAlA7LuIcg3zlRAQIvH37Sya32zT8VPJgY7hR5fjrGlWe76eESGbTMRdDEbceKhKXQZC2jNeao8OmDVDXKCXGqTdKB55EZAzD3DQgdSkvho2d2AZDZD';
-process.env.META_PAGE_ACCESS_TOKEN = '';
+// FORCE SET META TOKEN FOR LIVE SERVER (Render) - Commented out to prevent overwriting .env values
+// process.env.META_ACCESS_TOKEN = 'EAAfxrZAOI5cUBRtPAFBsNMtUG9NMn1AkvnuxHturfuNQ4JKWZBFSVmUcJ7pywRLSbRnGf2r0i785r6vLjZBw821xmZALflaPSRvCTBeE2j9M2c9DJIfdZAec0A1Y0r5FfU3kfFhV1P1YOQIAx6hanS9IBekCLzubZCcotpBvLc9kD98vFSy2B0fhScw0GN3IfEOdxnaOXZADU8bZBrAVFEQqlaTmZApeFSppxTUw2y6K8cbakkFyaEZAbs9e61JDOzZA6P9fcFXEpWFdKsTIxwZD';
+// process.env.META_PAGE_ACCESS_TOKEN = '';
 
 const rootEnvPath = path.join(__dirname, '..', '..', '.env');
 const serverEnvPath = path.join(__dirname, '..', '.env');
@@ -71,6 +71,12 @@ const allowedOrigins = [
   'http://localhost:5174',
   'http://localhost:5175',
   'http://localhost:5176',
+  'http://localhost:5177',
+  'http://localhost:5178',
+  'http://localhost:5179',
+  'http://localhost:5180',
+  'http://localhost:5181',
+  'http://localhost:5182',
   'http://localhost:8000',
   'https://manpreetcrm.com',
   'https://www.manpreetcrm.com',
@@ -280,6 +286,7 @@ async function processFacebookWebhook(body, app) {
                     notes: [{ content: `Lead generated from Meta Ad (Campaign: ${leadDetails.campaignName || 'Unknown'}, Ad: ${leadDetails.adName || 'Unknown'})` }]
                  });
                  console.log(`✅ [Webhook] Created new client from Meta Ads: ${client.fullName}`);
+                 
               } else {
                  console.log(`ℹ️ [Webhook] Lead already exists: ${client.fullName}`);
                  let updated = false;
@@ -309,126 +316,7 @@ async function processFacebookWebhook(body, app) {
         }
       }
 
-      // --- 2. HANDLE MESSAGES (Messaging) ---
-      if (entry.messaging) {
-        for (const webhook_event of entry.messaging) {
-          const senderId = webhook_event.sender.id;
-          const recipientId = webhook_event.recipient.id;
-          const message = webhook_event.message;
-          const timestamp = webhook_event.timestamp;
-
-          // Determine platform and page ID
-          const platform = body.object === 'instagram' ? 'instagram' : 'facebook';
-          const pageId = platform === 'instagram' 
-            ? (process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID || recipientId) 
-            : (process.env.FB_PAGE_ID || recipientId);
-
-          // Skip if sender is the page itself (outbound message echo)
-          if (senderId === pageId) {
-            console.log(`ℹ️ [Webhook] Skipping echo message from ${platform} Page ${senderId}`);
-            continue;
-          }
-
-          console.log(`📩 [Webhook] ${platform.toUpperCase()} Incoming from ${senderId}:`, message?.text);
-
-          if (message) {
-            const messageId = message.mid;
-            const eventId = `msg_${messageId}`;
-
-            const logResult = await logWebhookEvent(eventId, 'messaging', platform, webhook_event);
-            if (logResult.isDuplicate) {
-              await WebhookLog.create({
-                eventId: `${eventId}_dup_${Date.now()}`,
-                eventType: 'messaging',
-                platform,
-                payload: webhook_event,
-                status: 'duplicate',
-                errorMessage: 'Skipped processing: duplicate message ID'
-              });
-              continue;
-            }
-
-            try {
-              const text = message.text || (message.attachments ? `[${message.attachments[0].type.toUpperCase()}]` : '');
-              const attachments = message.attachments?.map(att => ({
-                url: att.payload?.url || att.url,
-                mimetype: att.type === 'image' ? 'image/jpeg' : 'application/octet-stream',
-                filename: `fb_attachment_${Date.now()}`
-              })) || [];
-
-              const Client = require('./models/Client');
-              const { Conversation, Message: MessageModel } = require('./models/Conversation');
-
-              // 1. Find or create client
-              let client = await Client.findOne({ platformContactId: senderId });
-              if (!client) {
-                 client = await Client.create({
-                    fullName: `${platform === 'instagram' ? 'IG' : 'FB'} User ${senderId.substring(0, 5)}`,
-                    platformContactId: senderId,
-                    source: platform,
-                    stage: 'new_lead'
-                 });
-              }
-
-              // 2. Find or create conversation
-              let conv = await Conversation.findOne({ 
-                platformContactId: senderId, 
-                platform: platform, 
-                status: { $ne: 'archived' } 
-              });
-              
-              if (!conv) {
-                 conv = await Conversation.create({
-                    client: client._id,
-                    platform: platform,
-                    platformContactId: senderId,
-                    lastMessage: text,
-                    lastMessageAt: new Date(timestamp)
-                 });
-              }
-
-              // 3. Save message (with deduplication)
-              let newMessage = await MessageModel.findOne({ externalId: message.mid });
-              
-              if (!newMessage) {
-                newMessage = await MessageModel.create({
-                   conversationId: conv._id,
-                   sender: 'client',
-                   content: text,
-                   messageType: attachments.length > 0 ? (message.attachments[0].type === 'image' ? 'image' : 'document') : 'text',
-                   attachments: attachments,
-                   externalId: message.mid,
-                   createdAt: new Date(timestamp)
-                });
-
-                // 4. Update conversation
-                await Conversation.findByIdAndUpdate(conv._id, {
-                   lastMessage: text,
-                   lastMessageAt: new Date(timestamp),
-                   status: 'open',
-                   $inc: { unreadCount: 1 }
-                });
-
-                // 5. Emit to Socket.io
-                const io = app.get('io');
-                if (io) {
-                  const populated = await newMessage.populate({
-                    path: 'conversationId',
-                    populate: { path: 'client' }
-                  });
-                  io.emit('new_message', populated); 
-                  io.to(conv._id.toString()).emit('new_message', populated);
-                }
-                
-                console.log(`✅ [Webhook] Processed message from ${senderId}`);
-              }
-            } catch (err) {
-              console.error('❌ [Webhook] Error processing Messaging:', err.message);
-              await WebhookLog.findOneAndUpdate({ eventId }, { status: 'failed', errorMessage: err.message });
-            }
-          }
-        }
-      }
+      // --- 2. HANDLE MESSAGES (Messaging) REMOVED ---
     }
   }
 }
@@ -535,6 +423,19 @@ app.post('/webhook/google', async (req, res) => {
     const client = await Client.create(clientData);
     console.log(`✅ [Google Webhook] Successfully created new Google Ads lead: ${client.fullName} (ID: ${client._id})`);
 
+    // Send Email Notification
+    // const { sendNotificationEmail } = require('./utils/notifications');
+    // const subject = `🎉 New Lead via Google Ads: ${client.fullName}`;
+    // const html = `
+    //   <h3>New Lead Created from Google Ads</h3>
+    //   <p><strong>Name:</strong> ${client.fullName}</p>
+    //   <p><strong>Email:</strong> ${client.email || 'N/A'}</p>
+    //   <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
+    //   <p><strong>Campaign ID:</strong> ${campaign_id || 'N/A'}</p>
+    //   <p>Login to CRM to view more details.</p>
+    // `;
+    // sendNotificationEmail(subject, 'New lead created via Google Ads.', html);
+
     // Log the webhook log event
     await WebhookLog.create({
       eventId,
@@ -604,6 +505,17 @@ app.post('/webhook/whatsapp', async (req, res) => {
             stage: 'new_lead'
          });
          console.log(`✨ Created new client from WhatsApp: ${userName}`);
+
+         // Send Email Notification
+         // const { sendNotificationEmail } = require('./utils/notifications');
+         // const subject = `🎉 New Lead via WhatsApp: ${client.fullName}`;
+         // const html = `
+         //    <h3>New Lead Created from WhatsApp</h3>
+         //    <p><strong>Name:</strong> ${client.fullName}</p>
+         //    <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
+         //    <p>Login to CRM to view more details.</p>
+         // `;
+         // sendNotificationEmail(subject, 'New lead created via WhatsApp.', html);
       }
 
       // 2. Find or create conversation
@@ -701,24 +613,36 @@ const EmailSyncService = require('./services/emailSync');
 const emailSync = new EmailSyncService(app);
 emailSync.start();
 
+// Meta Leads Auto-Sync Service (Runs in background)
+const messenger = require('./services/messenger');
+async function runMetaLeadsSync() {
+  console.log('🔄 [Auto-Sync Service] Checking Meta Leads & Messages in background...');
+  try {
+    const syncedCount = await messenger.syncHistoricalLeads(app);
+    if (syncedCount > 0) {
+      console.log(`✅ [Auto-Sync Service] Meta lead sync complete. Synced: ${syncedCount} new leads.`);
+    }
+    // Also sync chat conversations
+    await messenger.syncAll(app);
+  } catch (err) {
+    console.error('❌ [Auto-Sync Service] Error during background Meta auto-sync:', err.message);
+  }
+}
+
+// Start auto-sync on server boot (wait 10 seconds to allow server to fully initialize)
+setTimeout(() => {
+  runMetaLeadsSync();
+  // Run every 10 minutes (600,000 ms)
+  setInterval(runMetaLeadsSync, 10 * 60 * 1000);
+}, 10000);
 
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  
-  // Background Auto-Sync (Every 15 seconds for real-time delivery)
-  // This keeps the CRM updated in near real-time even without webhooks or manual sync clicks
-  setInterval(async () => {
-    try {
-      const messenger = require('./services/messenger');
-      await messenger.syncAll(app);
-    } catch (err) {
-      console.error('❌ [Background Sync] Error:', err.message);
-    }
-  }, 5000); // 5 seconds
 });
 // Trigger nodemon restart: Meta Ads fully configured and active with permanent page token.
 
 
 
 
+ 

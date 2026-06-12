@@ -21,9 +21,35 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
 
+let lastLeadSyncTime = 0;
+const SYNC_COOLDOWN = 2 * 60 * 1000; // 2 minutes
+
+function triggerBackgroundLeadSync(app) {
+  const now = Date.now();
+  if (now - lastLeadSyncTime < SYNC_COOLDOWN) {
+    return;
+  }
+  lastLeadSyncTime = now;
+
+  console.log('🔄 [Auto-Sync] Triggering background Meta Lead Sync on clients request...');
+  const messenger = require('../services/messenger');
+  messenger.syncHistoricalLeads(app)
+    .then(count => {
+      if (count > 0) {
+        console.log(`✅ [Auto-Sync] Background Meta Lead Sync finished. Synced ${count} new leads.`);
+      }
+    })
+    .catch(err => {
+      console.error('❌ [Auto-Sync] Background Meta Lead Sync failed:', err.message);
+    });
+}
+
 // GET /api/clients
 router.get('/', protect, async (req, res) => {
   try {
+    // Trigger background sync in a non-blocking way
+    triggerBackgroundLeadSync(req.app);
+
     const { stage, source, search, page = 1, limit = 20 } = req.query;
     const filter = { isArchived: false };
     if (stage) filter.stage = stage;
@@ -52,6 +78,20 @@ router.post('/', protect, async (req, res) => {
   try {
     const client = await Client.create({ ...req.body });
     req.app.get('io')?.emit('new_lead', client);
+
+    // Send Notification Email
+    // const { sendNotificationEmail } = require('../utils/notifications');
+    // const subject = `🎉 New Lead Created: ${client.fullName}`;
+    // const html = `
+    //   <h3>New Lead Details</h3>
+    //   <p><strong>Name:</strong> ${client.fullName}</p>
+    //   <p><strong>Email:</strong> ${client.email || 'N/A'}</p>
+    //   <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
+    //   <p><strong>Source:</strong> ${client.source || 'N/A'}</p>
+    //   <p>Login to CRM to view more details.</p>
+    // `;
+    // sendNotificationEmail(subject, 'A new lead has been created.', html);
+
     res.status(201).json({ success: true, client });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

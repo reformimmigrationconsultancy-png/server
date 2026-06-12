@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const Client = require('../models/Client');
 const { Conversation, Message } = require('../models/Conversation');
+const { sendNotificationEmail } = require('../utils/notifications');
 
 /**
  * Service to poll Inbox for new replies and sync them to CRM Conversations
@@ -175,6 +176,16 @@ class EmailSyncService {
           stage: 'new_lead'
         });
         console.log(`✨ Created new lead from inbound email: ${fromEmail}`);
+        
+        // Notify about new lead
+        // const subject = `🎉 New Lead via Email: ${client.fullName}`;
+        // const html = `
+        //   <h3>New Lead Created from Inbound Email</h3>
+        //   <p><strong>Name:</strong> ${client.fullName}</p>
+        //   <p><strong>Email:</strong> ${client.email}</p>
+        //   <p>Login to CRM to view more details.</p>
+        // `;
+        // sendNotificationEmail(subject, 'New lead created via Email.', html);
       }
 
       let cleanedText = text;
@@ -258,6 +269,20 @@ class EmailSyncService {
       }
 
       console.log(`📩 Synced Inbound Email from ${fromEmail}`);
+
+      // Notify about incoming email message
+      // const subject = `📩 New Email from ${client.fullName}`;
+      // const html = `
+      //   <h3>New Email Message Received</h3>
+      //   <p><strong>From:</strong> ${client.fullName} (${client.email})</p>
+      //   <p><strong>Message:</strong></p>
+      //   <blockquote style="border-left: 4px solid #ccc; padding-left: 10px; color: #555;">
+      //     ${cleanedText.substring(0, 500)}${cleanedText.length > 500 ? '...' : ''}
+      //   </blockquote>
+      //   <p>Login to CRM to reply.</p>
+      // `;
+      // sendNotificationEmail(subject, 'New email received.', html);
+      
     } catch (err) {
       console.error('❌ Error processing incoming email:', err.message);
     }

@@ -475,7 +475,7 @@ class MessengerService {
   /**
    * Sync all historical leads from Meta Leadgen Forms (fully paginated, rate-limit optimized)
    */
-  async syncHistoricalLeads() {
+  async syncHistoricalLeads(app = null) {
     try {
       const token = await this.getPageAccessToken();
       if (!token) throw new Error('Could not obtain Page Access Token for lead sync');
@@ -553,7 +553,7 @@ class MessengerService {
 
             if (!existing) {
               try {
-                await Client.create({
+                const client = await Client.create({
                   fullName: leadDetails.fullName || `Meta Lead ${leadDetails.externalId.substring(0, 5)}`,
                   email: leadDetails.email,
                   phone: leadDetails.phone,
@@ -573,6 +573,13 @@ class MessengerService {
                   }
                 });
                 totalSynced++;
+
+
+                // Emit to Socket.io to notify UI in real-time
+                if (app) {
+                  const io = app.get('io');
+                  if (io) io.emit('new_lead', client);
+                }
               } catch (dbErr) {
                 // If parallel processes create it or index fails
                 if (dbErr.code === 11000) {
