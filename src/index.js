@@ -177,7 +177,15 @@ app.get('/webhook/facebook', (req, res) => {
 const crypto = require('crypto');
 function verifyMetaSignature(req) {
   const signature = req.headers['x-hub-signature-256'];
-  if (!signature) return false;
+  if (!signature) {
+    console.warn('⚠️ [Webhook] Missing x-hub-signature-256 header');
+    return false;
+  }
+  
+  if (!req.rawBody) {
+    console.error('❌ [Webhook] req.rawBody is missing! Verify middleware might not be capturing raw body.');
+    return false;
+  }
   
   const expectedSignature = 'sha256=' + crypto
     .createHmac('sha256', process.env.META_APP_SECRET || '')
@@ -187,9 +195,17 @@ function verifyMetaSignature(req) {
   try {
     const sigBuf = Buffer.from(signature);
     const expectedBuf = Buffer.from(expectedSignature);
-    if (sigBuf.length !== expectedBuf.length) return false;
-    return crypto.timingSafeEqual(sigBuf, expectedBuf);
+    if (sigBuf.length !== expectedBuf.length) {
+      console.error(`❌ [Webhook] Signature length mismatch. Received len: ${sigBuf.length}, Expected len: ${expectedBuf.length}`);
+      return false;
+    }
+    const match = crypto.timingSafeEqual(sigBuf, expectedBuf);
+    if (!match) {
+      console.error('❌ [Webhook] Signature mismatch. Check META_APP_SECRET in your .env or environment variables.');
+    }
+    return match;
   } catch (err) {
+    console.error('❌ [Webhook] Error verifying signature:', err.message);
     return false;
   }
 }
@@ -466,6 +482,7 @@ app.post('/webhook/facebook', (req, res) => {
   if (process.env.META_APP_SECRET && req.headers['x-hub-signature-256']) {
     if (!verifyMetaSignature(req)) {
       console.error('❌ [Webhook] Invalid Meta Signature');
+      logWebhookEvent(`sig_fail_${Date.now()}`, 'signature_verification', 'facebook', { headers: req.headers, body: req.body }, 'failed', 'Invalid Meta Signature').catch(() => {});
       return; // Stop processing
     }
   }
@@ -667,7 +684,7 @@ const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
-// Trigger nodemon restart: Meta Ads fully configured and active with permanent page token.
+// Trigger nodemon restart: Meta Ads fully configured and active with permanent page token. (Updated)
 
 
 

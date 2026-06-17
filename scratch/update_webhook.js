@@ -19,7 +19,7 @@ async function updateWebhook() {
         include_values: true
       },
       {
-        params: { access_token: process.env.META_ACCESS_TOKEN }
+        params: { access_token: `${appId}|${appSecret}` }
       }
     );
     console.log('✅ Webhook Update Success:', response.data);

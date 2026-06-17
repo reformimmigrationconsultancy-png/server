@@ -4,7 +4,11 @@ const manager = require('../src/utils/metaTokenManager');
 
 async function run() {
   // New token with pages_manage_ads scope included
-  const token = 'EAAfxrZAOI5cUBRbfNI9XhAjM7I4CAfaat6IxSLvATZAAgvfSEMwRg0ZBlfQAzerujZBksKNztZB4R3hz1FHeRMN8Nyj0WT443TM4bABuYgEehcmUOB1Pay0SZBYUinsGganhkxqZBbfidFJahOaK9Qmk3LLzfcWTOQEsIG0Vl3VYO54qxYUem9vYSQQYoAbMb8r14pqGy6g3L4mMVrUnzHUhZAHyZBUdjONKFZA3CDaVvKpnEV36Ob40ZBieIzkysLGiBwTcnWtTq1ppkLTZC7UZD';
+  const token = process.argv[2] || process.env.META_ACCESS_TOKEN;
+  if (!token) {
+    console.error('❌ Error: Please provide the token as an argument: node scratch/install_user_token.js <YOUR_TOKEN>');
+    return;
+  }
   const newAppId = '2236052643833285';
 
   try {
