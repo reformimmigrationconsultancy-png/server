@@ -79,18 +79,36 @@ router.post('/', protect, async (req, res) => {
     const client = await Client.create({ ...req.body });
     req.app.get('io')?.emit('new_lead', client);
 
-    // Send Notification Email
-    // const { sendNotificationEmail } = require('../utils/notifications');
-    // const subject = `🎉 New Lead Created: ${client.fullName}`;
-    // const html = `
-    //   <h3>New Lead Details</h3>
-    //   <p><strong>Name:</strong> ${client.fullName}</p>
-    //   <p><strong>Email:</strong> ${client.email || 'N/A'}</p>
-    //   <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
-    //   <p><strong>Source:</strong> ${client.source || 'N/A'}</p>
-    //   <p>Login to CRM to view more details.</p>
-    // `;
-    // sendNotificationEmail(subject, 'A new lead has been created.', html);
+    // Send Notification Email to Admin
+    try {
+      const { sendNotificationEmail } = require('../utils/notifications');
+      const subject = `🎉 New Lead Created: ${client.fullName}`;
+      const html = `
+        <h3>New Lead Details</h3>
+        <p><strong>Name:</strong> ${client.fullName}</p>
+        <p><strong>Email:</strong> ${client.email || 'N/A'}</p>
+        <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
+        <p><strong>Source:</strong> ${client.source || 'N/A'}</p>
+        <p>Login to CRM to view more details.</p>
+      `;
+      await sendNotificationEmail(subject, 'A new lead has been created.', html);
+
+      // Send auto-responder email TO THE CLIENT if email is provided
+      if (client.email && client.email.includes('@')) {
+        const clientSubject = `Thank you for your interest, ${client.fullName}!`;
+        const clientHtml = `
+          <h3>Hi ${client.fullName},</h3>
+          <p>Thank you for reaching out to us.</p>
+          <p>We have received your details and one of our representatives will contact you shortly.</p>
+          <br/>
+          <p>Best regards,</p>
+          <p>The Manpreet CRM Team</p>
+        `;
+        await sendNotificationEmail(clientSubject, 'Thank you for your interest.', clientHtml, client.email);
+      }
+    } catch (emailErr) {
+      console.error('❌ Error sending manual lead email notification:', emailErr.message);
+    }
 
     res.status(201).json({ success: true, client });
   } catch (err) {
