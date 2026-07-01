@@ -303,7 +303,7 @@ async function processFacebookWebhook(body, app) {
                  });
                  console.log(`✅ [Webhook] Created new client from Meta Ads: ${client.fullName}`);
                  
-                 // Send Email Notification
+                 // Send Email Notification to Admin
                  try {
                    const { sendNotificationEmail } = require('./utils/notifications');
                    const subject = `🎉 New Lead via Meta Ads: ${client.fullName}`;
@@ -317,6 +317,21 @@ async function processFacebookWebhook(body, app) {
                      <p>Login to your CRM to view more details.</p>
                    `;
                    await sendNotificationEmail(subject, 'New lead created via Meta Ads.', html);
+
+                   // Send auto-responder email TO THE CLIENT if email is provided
+                   if (client.email && client.email.includes('@')) {
+                     const clientSubject = `Thank you for your interest, ${client.fullName}!`;
+                     const clientHtml = `
+                       <h3>Hi ${client.fullName},</h3>
+                       <p>Thank you for reaching out to us via our Meta Ads campaign.</p>
+                       <p>We have received your details and one of our representatives will contact you shortly at ${client.phone || 'your phone number'}.</p>
+                       <br/>
+                       <p>Best regards,</p>
+                       <p>The Manpreet CRM Team</p>
+                     `;
+                     await sendNotificationEmail(clientSubject, 'Thank you for your interest.', clientHtml, client.email);
+                   }
+
                  } catch (emailErr) {
                    console.error('❌ Error sending lead email notification:', emailErr.message);
                  }

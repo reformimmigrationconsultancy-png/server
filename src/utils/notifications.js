@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer');
 
-const sendNotificationEmail = async (subject, text, html) => {
+const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
   try {
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
       console.log('⚠️ SMTP credentials missing, skipping notification email.');
@@ -19,7 +19,7 @@ const sendNotificationEmail = async (subject, text, html) => {
 
     const mailOptions = {
       from: `"Lead CRM Alerts" <${process.env.SMTP_USER}>`,
-      to: process.env.SMTP_USER,
+      to: toEmail || process.env.SMTP_USER,
       subject: subject,
       text: text,
       html: html || text,
