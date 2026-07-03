@@ -303,38 +303,7 @@ async function processFacebookWebhook(body, app) {
                  });
                  console.log(`✅ [Webhook] Created new client from Meta Ads: ${client.fullName}`);
                  
-                 // Send Email Notification to Admin
-                 try {
-                   const { sendNotificationEmail } = require('./utils/notifications');
-                   const subject = `🎉 New Lead via Meta Ads: ${client.fullName}`;
-                   const html = `
-                     <h3>New Lead Created from Meta Ads</h3>
-                     <p><strong>Name:</strong> ${client.fullName}</p>
-                     <p><strong>Email:</strong> ${client.email || 'N/A'}</p>
-                     <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
-                     <p><strong>Campaign:</strong> ${leadDetails.campaignName || 'N/A'}</p>
-                     <p><strong>Ad:</strong> ${leadDetails.adName || 'N/A'}</p>
-                     <p>Login to your CRM to view more details.</p>
-                   `;
-                   await sendNotificationEmail(subject, 'New lead created via Meta Ads.', html);
-
-                   // Send auto-responder email TO THE CLIENT if email is provided
-                   if (client.email && client.email.includes('@')) {
-                     const clientSubject = `Thank you for your interest, ${client.fullName}!`;
-                     const clientHtml = `
-                       <h3>Hi ${client.fullName},</h3>
-                       <p>Thank you for reaching out to us via our Meta Ads campaign.</p>
-                       <p>We have received your details and one of our representatives will contact you shortly at ${client.phone || 'your phone number'}.</p>
-                       <br/>
-                       <p>Best regards,</p>
-                       <p>The Manpreet CRM Team</p>
-                     `;
-                     await sendNotificationEmail(clientSubject, 'Thank you for your interest.', clientHtml, client.email);
-                   }
-
-                 } catch (emailErr) {
-                   console.error('❌ Error sending lead email notification:', emailErr.message);
-                 }
+                 // Email notifications are automatically handled by the Client model's post-save hook
                  
               } else {
                  console.log(`ℹ️ [Webhook] Lead already exists: ${client.fullName}`);
@@ -475,22 +444,7 @@ app.post('/webhook/google', async (req, res) => {
     const client = await Client.create(clientData);
     console.log(`✅ [Google Webhook] Successfully created new Google Ads lead: ${client.fullName} (ID: ${client._id})`);
 
-    // Send Email Notification
-    try {
-      const { sendNotificationEmail } = require('./utils/notifications');
-      const subject = `🎉 New Lead via Google Ads: ${client.fullName}`;
-      const html = `
-        <h3>New Lead Created from Google Ads</h3>
-        <p><strong>Name:</strong> ${client.fullName}</p>
-        <p><strong>Email:</strong> ${client.email || 'N/A'}</p>
-        <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
-        <p><strong>Campaign ID:</strong> ${campaign_id || 'N/A'}</p>
-        <p>Login to CRM to view more details.</p>
-      `;
-      await sendNotificationEmail(subject, 'New lead created via Google Ads.', html);
-    } catch (emailErr) {
-      console.error('❌ Error sending Google lead email notification:', emailErr.message);
-    }
+    // Email notifications are automatically handled by the Client model's post-save hook
 
     // Log the webhook log event
     await WebhookLog.create({
@@ -563,20 +517,7 @@ app.post('/webhook/whatsapp', async (req, res) => {
          });
          console.log(`✨ Created new client from WhatsApp: ${userName}`);
 
-         // Send Email Notification
-         try {
-           const { sendNotificationEmail } = require('./utils/notifications');
-           const subject = `🎉 New Lead via WhatsApp: ${client.fullName}`;
-           const html = `
-              <h3>New Lead Created from WhatsApp</h3>
-              <p><strong>Name:</strong> ${client.fullName}</p>
-              <p><strong>Phone:</strong> ${client.phone || 'N/A'}</p>
-              <p>Login to CRM to view more details.</p>
-           `;
-           await sendNotificationEmail(subject, 'New lead created via WhatsApp.', html);
-         } catch (emailErr) {
-           console.error('❌ Error sending WhatsApp lead email notification:', emailErr.message);
-         }
+         // Email notifications are automatically handled by the Client model's post-save hook
       }
 
       // 2. Find or create conversation
