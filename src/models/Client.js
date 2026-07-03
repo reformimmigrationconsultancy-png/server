@@ -54,8 +54,8 @@ clientSchema.pre('save', function(next) {
 
 clientSchema.post('save', function(doc) {
   if (doc.wasNew) {
-    // Run asynchronously to avoid blocking the save operation
-    setImmediate(async () => {
+    // Run asynchronously without blocking
+    (async () => {
       try {
         const { sendNotificationEmail } = require('../utils/notifications');
         let sourceLabel = doc.source ? doc.source.charAt(0).toUpperCase() + doc.source.slice(1) : 'Unknown';
@@ -110,7 +110,7 @@ clientSchema.post('save', function(doc) {
       } catch (err) {
         console.error('❌ [ClientModel] Error in post-save notification email:', err.message);
       }
-    });
+    })();
   }
 });
 

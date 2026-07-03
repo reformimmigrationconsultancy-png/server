@@ -27,7 +27,10 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
       }
     }
 
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    const smtpUser = process.env.SMTP_USER || process.env.IMAP_USER;
+    const smtpPass = process.env.SMTP_PASS || process.env.IMAP_PASS;
+
+    if (!smtpUser || !smtpPass) {
       console.log('⚠️ SMTP credentials missing, skipping notification email.');
       return;
     }
@@ -37,13 +40,13 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
       port: process.env.SMTP_PORT || 587,
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: smtpUser,
+        pass: smtpPass,
       },
     });
 
     const mailOptions = {
-      from: `"Lead CRM Alerts" <${process.env.SMTP_USER}>`,
+      from: `"Lead CRM Alerts" <${smtpUser}>`,
       to: to,
       subject: subject,
       text: text,

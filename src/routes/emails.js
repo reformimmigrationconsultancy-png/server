@@ -8,15 +8,15 @@ const router = express.Router();
 
 // Create a robust, pooled transporter
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.office365.com',
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: Number(process.env.SMTP_PORT) || 587,
-  secure: false, // true for port 465, false for 587 (STARTTLS)
+  secure: process.env.SMTP_SECURE === 'true', // Use environment variable for secure
   pool: true,
   maxConnections: 5,
   maxMessages: 100,
   auth: { 
-    user: process.env.SMTP_USER, 
-    pass: process.env.SMTP_PASS 
+    user: process.env.SMTP_USER || process.env.IMAP_USER, 
+    pass: process.env.SMTP_PASS || process.env.IMAP_PASS 
   },
   tls: {
     // Force modern TLS configurations
@@ -110,7 +110,7 @@ router.post('/send', protect, async (req, res) => {
         subject: finalSubject,
         html: finalBody.replace(/\n/g, '<br>'),
         text: finalBody,
-        from: process.env.SMTP_USER || 'hello@manpreetcrm.com',
+        from: process.env.SMTP_USER || process.env.IMAP_USER || 'hello@manpreetcrm.com',
         fromName: 'Lead CRM'
       });
       
@@ -121,7 +121,7 @@ router.post('/send', protect, async (req, res) => {
     } else {
       const transporter = getTransporter();
       await transporter.sendMail({
-        from: `"Lead CRM" <${process.env.SMTP_USER}>`,
+        from: `"Lead CRM" <${process.env.SMTP_USER || process.env.IMAP_USER}>`,
         to: recipientEmail,
         subject: finalSubject,
         text: finalBody,
