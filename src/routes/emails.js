@@ -13,8 +13,8 @@ const transporter = nodemailer.createTransport({
   maxConnections: 5,
   maxMessages: 100,
   auth: { 
-    user: process.env.SMTP_USER || process.env.IMAP_USER, 
-    pass: process.env.SMTP_PASS || process.env.IMAP_PASS 
+    user: process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com', 
+    pass: process.env.SMTP_PASS || process.env.IMAP_PASS || 'swnamaxjdsfsygkz' 
   },
   tls: {
     // Force modern TLS configurations
@@ -108,7 +108,7 @@ router.post('/send', protect, async (req, res) => {
         subject: finalSubject,
         html: finalBody.replace(/\n/g, '<br>'),
         text: finalBody,
-        from: process.env.SMTP_USER || process.env.IMAP_USER || 'hello@manpreetcrm.com',
+        from: process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com',
         fromName: 'Lead CRM'
       });
       
@@ -119,7 +119,7 @@ router.post('/send', protect, async (req, res) => {
     } else {
       const transporter = getTransporter();
       await transporter.sendMail({
-        from: `"Lead CRM" <${process.env.SMTP_USER || process.env.IMAP_USER}>`,
+        from: `"Lead CRM" <${process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com'}>`,
         to: recipientEmail,
         subject: finalSubject,
         text: finalBody,
@@ -252,6 +252,18 @@ router.delete('/:id', protect, async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// Check live server environment variables
+router.get('/test-config', (req, res) => {
+  res.json({
+    hasSmtpUser: !!process.env.SMTP_USER,
+    hasSmtpPass: !!process.env.SMTP_PASS,
+    hasImapUser: !!process.env.IMAP_USER,
+    hasImapPass: !!process.env.IMAP_PASS,
+    smtpUserValue: process.env.SMTP_USER ? process.env.SMTP_USER.substring(0, 3) + '***' : null,
+    imapUserValue: process.env.IMAP_USER ? process.env.IMAP_USER.substring(0, 3) + '***' : null,
+  });
 });
 
 module.exports = router;

@@ -27,8 +27,8 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
       }
     }
 
-    const smtpUser = process.env.SMTP_USER || process.env.IMAP_USER;
-    const smtpPass = process.env.SMTP_PASS || process.env.IMAP_PASS;
+    const smtpUser = process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com';
+    const smtpPass = process.env.SMTP_PASS || process.env.IMAP_PASS || 'swnamaxjdsfsygkz';
 
     if (!smtpUser || !smtpPass) {
       console.log('⚠️ SMTP credentials missing, skipping notification email.');
