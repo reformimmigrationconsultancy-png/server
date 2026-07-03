@@ -8,9 +8,7 @@ const router = express.Router();
 
 // Create a robust, pooled transporter
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_SECURE === 'true', // Use environment variable for secure
+  service: 'gmail',
   pool: true,
   maxConnections: 5,
   maxMessages: 100,

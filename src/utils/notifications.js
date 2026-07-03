@@ -36,9 +36,7 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
     }
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: process.env.SMTP_PORT || 587,
-      secure: process.env.SMTP_SECURE === 'true',
+      service: 'gmail',
       auth: {
         user: smtpUser,
         pass: smtpPass,
