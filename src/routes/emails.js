@@ -101,13 +101,32 @@ router.post('/send', protect, async (req, res) => {
       finalBody = finalBody || TEMPLATES[templateKey].body.replace('{{name}}', name);
     }
 
-    const transporter = getTransporter();
-    await transporter.sendMail({
-      from: `"Lead CRM" <${process.env.SMTP_USER}>`,
-      to: recipientEmail,
-      subject: finalSubject,
-      text: finalBody,
-    });
+    // Use PHP Mailer if configured
+    if (process.env.PHP_MAILER_URL) {
+      console.log(`📡 Sending outbound email via PHP Mailer to ${recipientEmail}...`);
+      const axios = require('axios');
+      const response = await axios.post(process.env.PHP_MAILER_URL, {
+        to: recipientEmail,
+        subject: finalSubject,
+        html: finalBody.replace(/\n/g, '<br>'),
+        text: finalBody,
+        from: process.env.SMTP_USER || 'hello@manpreetcrm.com',
+        fromName: 'Lead CRM'
+      });
+      
+      if (!response.data || !response.data.success) {
+         console.error('❌ PHP Mailer failed:', response.data);
+         throw new Error('PHP Mailer failed to send email');
+      }
+    } else {
+      const transporter = getTransporter();
+      await transporter.sendMail({
+        from: `"Lead CRM" <${process.env.SMTP_USER}>`,
+        to: recipientEmail,
+        subject: finalSubject,
+        text: finalBody,
+      });
+    }
 
     // 1. Ensure Client exists (create if missing)
     if (!client) {

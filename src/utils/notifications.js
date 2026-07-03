@@ -2,6 +2,30 @@ const nodemailer = require('nodemailer');
 
 const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
   try {
+    const to = toEmail || process.env.SMTP_USER;
+    const finalHtml = html || text;
+
+    // Use PHP Mailer if configured
+    if (process.env.PHP_MAILER_URL) {
+      console.log(`📡 Sending notification email via PHP Mailer to ${to}...`);
+      const axios = require('axios');
+      const response = await axios.post(process.env.PHP_MAILER_URL, {
+        to: to,
+        subject: subject,
+        html: finalHtml,
+        text: text,
+        from: process.env.SMTP_USER || 'alerts@manpreetcrm.com',
+        fromName: 'Lead CRM Alerts'
+      });
+      if (response.data && response.data.success) {
+        console.log(`✅ PHP Mailer success: ${subject}`);
+        return;
+      } else {
+        console.error(`❌ PHP Mailer failed:`, response.data);
+        // Fallback to Nodemailer if PHP fails
+      }
+    }
+
     if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
       console.log('⚠️ SMTP credentials missing, skipping notification email.');
       return;
@@ -19,10 +43,10 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
 
     const mailOptions = {
       from: `"Lead CRM Alerts" <${process.env.SMTP_USER}>`,
-      to: toEmail || process.env.SMTP_USER,
+      to: to,
       subject: subject,
       text: text,
-      html: html || text,
+      html: finalHtml,
     };
 
     await transporter.sendMail(mailOptions);
