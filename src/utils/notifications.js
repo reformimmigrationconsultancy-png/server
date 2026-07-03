@@ -43,6 +43,9 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
         user: smtpUser,
         pass: smtpPass,
       },
+      tls: {
+        rejectUnauthorized: false
+      }
     });
 
     const mailOptions = {
