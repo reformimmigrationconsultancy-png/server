@@ -2,7 +2,8 @@ const nodemailer = require('nodemailer');
 
 const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
   try {
-    const to = toEmail || process.env.SMTP_USER;
+    // Default to the admin email (mortgagewithmanpreet@gmail.com) if no specific toEmail is provided
+    const to = toEmail || process.env.ADMIN_EMAIL || process.env.IMAP_USER || process.env.SMTP_USER || 'mortgagewithmanpreet@gmail.com';
     const finalHtml = html || text;
 
     // Use PHP Mailer if configured
