@@ -161,9 +161,6 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static file serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Serve React static frontend assets
-app.use(express.static(path.join(__dirname, '../../client/dist')));
-
 // Image Upload Logic (Simple)
 const multer = require('multer');
 const storage = multer.diskStorage({
@@ -715,18 +712,14 @@ app.post('/webhook/whatsapp', async (req, res) => {
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // --- PRODUCTION SETUP ---
-// Serve static files from the React app build
-app.use(express.static(path.join(__dirname, '../../client/dist')));
-
 // API Routes (already defined above)
 
-// Catch-all route to serve the React index.html for SPA routing
+// Catch-all route for missing APIs
 app.get('*', (req, res) => {
-  // Only serve index.html if it's not an API route (which start with /api)
-  if (!req.url.startsWith('/api')) {
-    res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
-  } else {
+  if (req.url.startsWith('/api')) {
     res.status(404).json({ success: false, message: 'API Route not found' });
+  } else {
+    res.status(404).send('Backend API is running. Client should be hosted separately.');
   }
 });
 
