@@ -32,44 +32,75 @@ class MessengerService {
   }
 
   /**
+   * Subscribe Facebook Page to Webhooks (Leadgen, Messages, Feed)
+   * This is required for Facebook to deliver real-time Lead Ads to our webhook URL
+   */
+  async subscribePageToWebhooks(suppliedToken = null) {
+    try {
+      const token = suppliedToken || this._pageToken || process.env.META_PAGE_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN;
+      if (!token) throw new Error('No Page Access Token available for webhook subscription');
+
+      console.log(`📡 [MessengerService] Subscribing Page ${this.pageId} to leadgen webhooks only...`);
+      const response = await axios.post(
+        `https://graph.facebook.com/v18.0/${this.pageId}/subscribed_apps`,
+        null,
+        {
+          params: {
+            access_token: token,
+            subscribed_fields: 'leadgen'
+          }
+        }
+      );
+
+      console.log(`✅ [MessengerService] Page successfully subscribed to Meta Webhooks:`, response.data);
+      return { success: true, data: response.data };
+    } catch (err) {
+      console.warn(`⚠️ [MessengerService] Webhook subscription notice:`, err.response?.data?.error?.message || err.message);
+      return { success: false, error: err.response?.data?.error?.message || err.message };
+    }
+  }
+
+  /**
    * Get Page Access Token from environment or cache.
-   * If a Page Token is set in META_PAGE_ACCESS_TOKEN, it is used immediately.
+   * Ensures the token is upgraded to a Permanent Page Access Token and Page is subscribed to webhooks.
    */
   async getPageAccessToken() {
     if (this._pageToken) return this._pageToken;
-    if (process.env.META_PAGE_ACCESS_TOKEN) {
-      this._pageToken = process.env.META_PAGE_ACCESS_TOKEN;
-      return this._pageToken;
-    }
 
     try {
-      console.log('📡 [MessengerService] Validating Meta Access Token...');
-      const tokenToUse = this.metaAccessToken || process.env.META_ACCESS_TOKEN;
+      console.log('📡 [MessengerService] Validating and resolving Meta Access Token...');
+      const tokenToUse = process.env.META_PAGE_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN || this.metaAccessToken;
       if (!tokenToUse) {
         throw new Error('No Meta tokens found in .env');
       }
 
-      // Check if it's already a Page Token or exchange it
       const metaTokenManager = require('../utils/metaTokenManager');
       const type = await metaTokenManager.getTokenType(tokenToUse);
 
       if (type === 'PAGE') {
-        console.log('✅ [MessengerService] Token is already a Page Access Token.');
+        console.log('✅ [MessengerService] Token is a valid Page Access Token.');
         this._pageToken = tokenToUse;
         process.env.META_PAGE_ACCESS_TOKEN = tokenToUse;
         metaTokenManager.writeEnv('META_PAGE_ACCESS_TOKEN', tokenToUse);
+        
+        // Auto-subscribe page to webhooks in background
+        this.subscribePageToWebhooks(tokenToUse).catch(() => {});
         return this._pageToken;
       }
 
-      // If it's a User Token, let's convert it to a Permanent Page Token
+      // If it's a User Token, upgrade it to Permanent Page Token
       console.log('📡 [MessengerService] Token is a User Token. Upgrading to Permanent Page Token...');
       const result = await metaTokenManager.convertAndSave(tokenToUse);
       this._pageToken = result.token;
+      process.env.META_PAGE_ACCESS_TOKEN = result.token;
+      
+      // Auto-subscribe page to webhooks in background
+      this.subscribePageToWebhooks(result.token).catch(() => {});
       return this._pageToken;
     } catch (error) {
       console.error('❌ [MessengerService] Token Resolution Error:', error.message);
       // Fallback to whatever token is in memory
-      this._pageToken = this.metaAccessToken || process.env.META_ACCESS_TOKEN;
+      this._pageToken = process.env.META_PAGE_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN || this.metaAccessToken;
       return this._pageToken;
     }
   }
@@ -277,134 +308,22 @@ class MessengerService {
   }
 
   /**
-   * Sync all platforms (Facebook & Instagram)
-   * This is used for background auto-sync
+   * Sync all platforms (Facebook & Instagram) - Disabled to only allow Lead Ads
    */
   async syncAll(app = null) {
-    console.log('🔄 [MessengerService] Starting full sync...');
-    const fbCount = await this.syncPlatform('facebook', app);
-    const igCount = await this.syncPlatform('instagram', app);
-    console.log(`✅ [MessengerService] Full sync complete. Imported: FB(${fbCount}), IG(${igCount})`);
-    return { fbCount, igCount };
+    return { fbCount: 0, igCount: 0 };
   }
 
   /**
-   * Reusable sync logic for a specific platform
+   * Reusable sync logic for a specific platform - Disabled for direct messages
    */
   async syncPlatform(platform, app = null) {
-    try {
-      const rawConvs = platform === 'instagram' ? await this.fetchInstagramConversations() : await this.fetchFacebookConversations();
-      let importedCount = 0;
-
-      for (const metaConv of rawConvs) {
-        const participants = metaConv.participants?.data || [];
-        const lastMsg = metaConv.messages?.data?.[0];
-        
-        const pageId = platform === 'instagram' ? process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID : process.env.FB_PAGE_ID;
-        const otherUser = participants.find(p => p.id !== pageId);
-        if (!otherUser) continue;
-
-        const psid = otherUser.id;
-
-        // 1. Find or create client
-        let client = await Client.findOne({ platformContactId: psid });
-        if (!client) {
-          client = await Client.create({
-            fullName: otherUser.name || `${platform === 'instagram' ? 'IG' : 'FB'} User ${psid.substring(0, 5)}`,
-            platformContactId: psid,
-            source: platform
-          });
-        }
-
-        // 2. Find or create conversation
-        let conv = await Conversation.findOne({ platformContactId: psid, platform: platform });
-        
-        if (!conv) {
-          conv = await Conversation.create({
-            client: client._id,
-            platform: platform,
-            platformContactId: psid,
-            externalConversationId: metaConv.id,
-            lastMessage: lastMsg?.message || 'Synced conversation',
-            lastMessageAt: new Date(metaConv.updated_time)
-          });
-          importedCount++;
-        } else {
-          await Conversation.findByIdAndUpdate(conv._id, {
-            lastMessage: lastMsg?.message || conv.lastMessage,
-            lastMessageAt: new Date(metaConv.updated_time)
-          });
-        }
-
-        // 3. Sync the last message if it's not already in our DB
-        if (lastMsg) {
-          const messageExists = await Message.findOne({ 
-            conversationId: conv._id, 
-            externalId: lastMsg.id
-          }) || await Message.findOne({
-            conversationId: conv._id,
-            content: lastMsg.message,
-            createdAt: new Date(lastMsg.created_time)
-          });
-
-          if (!messageExists) {
-            const attachments = lastMsg.attachments?.data?.map(att => {
-              const url = att.image_data?.url || att.audio_data?.url || att.video_data?.url || att.file_url || att.url;
-              let mimetype = 'application/octet-stream';
-              if (att.image_data) mimetype = 'image/jpeg';
-              else if (att.audio_data) mimetype = 'audio/mpeg';
-              else if (att.video_data) mimetype = 'video/mp4';
-              
-              return {
-                url,
-                mimetype,
-                filename: att.name || `fb_attachment_${Date.now()}`
-              };
-            }).filter(a => a.url) || [];
-
-            const isAudio = lastMsg.attachments?.data?.some(att => att.audio_data);
-            const isVideo = lastMsg.attachments?.data?.some(att => att.video_data);
-            const isImage = lastMsg.attachments?.data?.some(att => att.image_data);
-
-            let messageType = 'text';
-            if (isAudio) messageType = 'audio';
-            else if (isVideo) messageType = 'video';
-            else if (isImage) messageType = 'image';
-
-            const newMessageDoc = await Message.create({
-              conversationId: conv._id,
-              sender: lastMsg.from?.id === psid ? 'client' : 'agent',
-              content: lastMsg.message || (attachments.length > 0 ? `[${messageType.toUpperCase()}]` : '[No content]'),
-              messageType,
-              attachments: attachments,
-              externalId: lastMsg.id,
-              createdAt: new Date(lastMsg.created_time || Date.now())
-            });
-
-            if (app) {
-              const io = app.get('io');
-              if (io) {
-                const populated = await newMessageDoc.populate({
-                  path: 'conversationId',
-                  populate: { path: 'client' }
-                });
-                io.emit('new_message', populated);
-                io.to(conv._id.toString()).emit('new_message', populated);
-              }
-            }
-            importedCount++;
-          }
-        }
-      }
-      return importedCount;
-    } catch (err) {
-      console.error(`❌ [MessengerService] Sync error for ${platform}:`, err.message);
-      return 0;
-    }
+    return 0;
   }
 
   /**
    * Fetch lead details from Meta Graph API using leadgen_id
+   * Uses multi-tier fallback to ensure field compatibility across Graph API versions
    */
   async getLeadDetails(leadgenId) {
     try {
@@ -413,18 +332,31 @@ class MessengerService {
 
       console.log(`📡 [MessengerService] Fetching lead details for ID: ${leadgenId}`);
       
-      const fields = 'created_time,id,ad_id,form_id,field_data,campaign_name,campaign_id,adset_name,ad_name';
-      const response = await axios.get(`https://graph.facebook.com/v18.0/${leadgenId}`, {
-        params: { access_token: token, fields }
-      });
+      let leadData = null;
 
-      const leadData = response.data;
+      // Tier 1: Attempt to fetch with extended campaign and ad metadata
+      try {
+        const fields = 'created_time,id,ad_id,form_id,field_data,campaign_name,campaign_id,adset_name,ad_name';
+        const response = await axios.get(`https://graph.facebook.com/v18.0/${leadgenId}`, {
+          params: { access_token: token, fields }
+        });
+        leadData = response.data;
+      } catch (tier1Err) {
+        console.warn(`⚠️ [MessengerService] Extended lead fields fetch failed. Falling back to core fields:`, tier1Err.response?.data?.error?.message || tier1Err.message);
+        // Tier 2: Fallback to core fields guaranteed to be available on all Lead nodes
+        const coreFields = 'created_time,id,ad_id,form_id,field_data';
+        const fallbackRes = await axios.get(`https://graph.facebook.com/v18.0/${leadgenId}`, {
+          params: { access_token: token, fields: coreFields }
+        });
+        leadData = fallbackRes.data;
+      }
+
       console.log(`✅ [MessengerService] Lead details fetched:`, JSON.stringify(leadData, null, 2));
 
-      // Map the field_data to a more usable object
+      // Map the field_data to a standardized object
       const mappedData = {
         externalId: leadData.id,
-        createdTime: leadData.created_time,
+        createdTime: leadData.created_time || new Date().toISOString(),
         adId: leadData.ad_id,
         formId: leadData.form_id,
         campaignName: leadData.campaign_name,
@@ -432,6 +364,9 @@ class MessengerService {
         adName: leadData.ad_name,
         pageName: 'Facebook Page',
         customFields: {},
+        loanAmount: undefined,
+        propertyValue: undefined,
+        city: undefined,
         rawData: leadData,
       };
 
@@ -443,18 +378,38 @@ class MessengerService {
 
       if (leadData.field_data) {
         leadData.field_data.forEach(field => {
-          const name = field.name.toLowerCase();
-          const value = field.values && field.values.length > 0 ? field.values[0] : '';
+          const rawName = (field.name || '').trim();
+          const name = rawName.toLowerCase();
+          const value = field.values && field.values.length > 0 ? String(field.values[0]).trim() : '';
           
-          if (name === 'full_name' || name === 'name') mappedData.fullName = value;
-          else if (name === 'first_name') mappedData.firstName = value;
-          else if (name === 'last_name') mappedData.lastName = value;
-          else if (name === 'email') mappedData.email = value;
-          else if (name === 'phone_number' || name === 'phone') mappedData.phone = value;
-          else if (name === 'city') mappedData.city = value;
-          else {
+          if (!value) return;
+
+          if (name === 'full_name' || name === 'fullname' || name === 'name' || name === 'your_name' || name === 'full name' || name.includes('full_name') || name.includes('fullname') || name === 'your_full_name' || name === 'applicant_name') {
+            mappedData.fullName = value;
+          } else if (name === 'first_name' || name === 'fname' || name === 'first name' || name.includes('first_name')) {
+            mappedData.firstName = value;
+          } else if (name === 'last_name' || name === 'lname' || name === 'last name' || name.includes('last_name')) {
+            mappedData.lastName = value;
+          } else if (name.includes('email')) {
+            mappedData.email = value;
+          } else if (name.includes('phone') || name.includes('mobile') || name.includes('contact') || name.includes('cell') || name.includes('number')) {
+            mappedData.phone = value;
+          } else if (name.includes('city') || name.includes('location') || name.includes('address')) {
+            mappedData.city = value;
+            mappedData.customFields[rawName] = value;
+          } else {
             // Save non-standard responses in customFields
-            mappedData.customFields[field.name] = value;
+            mappedData.customFields[rawName] = value;
+            
+            // Check for numeric values for loan or property
+            const cleanNum = parseInt(String(value).replace(/[^0-9]/g, ''), 10);
+            if (!isNaN(cleanNum) && cleanNum > 0) {
+              if (name.includes('loan') || name.includes('mortgage') || name.includes('borrow')) {
+                mappedData.loanAmount = cleanNum;
+              } else if (name.includes('property') || name.includes('purchase') || name.includes('budget') || name.includes('price') || name.includes('value')) {
+                mappedData.propertyValue = cleanNum;
+              }
+            }
           }
         });
 
@@ -483,61 +438,105 @@ class MessengerService {
       console.log(`📡 [MessengerService] Fetching Leadgen Forms for Page: ${this.pageId}`);
       const pageName = await this.getPageName();
       
-      // 1. Get all forms for this page
-      const formsRes = await axios.get(`https://graph.facebook.com/v18.0/${this.pageId}/leadgen_forms`, {
-        params: { access_token: token, limit: 100 }
-      });
+      // Auto-subscribe page to webhooks during sync
+      this.subscribePageToWebhooks(token).catch(() => {});
 
-      const forms = formsRes.data.data || [];
+      // 1. Get all forms for this page (including active & archived)
+      let forms = [];
+      try {
+        const formsRes = await axios.get(`https://graph.facebook.com/v18.0/${this.pageId}/leadgen_forms`, {
+          params: { access_token: token, fields: 'id,name,status,leads_count,created_time', limit: 100 }
+        });
+        forms = formsRes.data.data || [];
+      } catch (pageFormsErr) {
+        console.warn('⚠️ [MessengerService] Error fetching forms for configured page, trying basic forms query:', pageFormsErr.response?.data?.error?.message || pageFormsErr.message);
+        const fallbackForms = await axios.get(`https://graph.facebook.com/v18.0/${this.pageId}/leadgen_forms`, {
+          params: { access_token: token, limit: 100 }
+        });
+        forms = fallbackForms.data.data || [];
+      }
+
+      console.log(`📋 [MessengerService] Found ${forms.length} Leadgen Forms on Page.`);
       let totalSynced = 0;
 
       for (const form of forms) {
-        console.log(`🔍 [MessengerService] Syncing leads from form: ${form.name} (${form.id})`);
+        console.log(`🔍 [MessengerService] Syncing leads from form: "${form.name}" (ID: ${form.id})`);
         
-        // 2. Get leads for each form with full pagination traversal (ensure NO LEADS ARE SKIPPED)
+        // 2. Get leads for each form with full pagination traversal
         const fields = 'created_time,id,ad_id,form_id,field_data,campaign_name,campaign_id,adset_name,ad_name';
         let leadsUrl = `https://graph.facebook.com/v18.0/${form.id}/leads`;
         let leadsParams = { access_token: token, fields, limit: 100 };
 
         while (leadsUrl) {
-          console.log(`📡 [MessengerService] Querying leads page: ${leadsUrl.substring(0, 80)}...`);
-          const leadsRes = await axios.get(leadsUrl, { 
-            params: leadsUrl.includes('?') ? {} : leadsParams 
-          });
+          console.log(`📡 [MessengerService] Querying leads page for form ${form.id}...`);
+          let leadsData = null;
+          try {
+            const leadsRes = await axios.get(leadsUrl, { 
+              params: leadsUrl.includes('?') ? {} : leadsParams 
+            });
+            leadsData = leadsRes.data;
+          } catch (fetchErr) {
+            console.warn(`⚠️ [MessengerService] Form ${form.id} leads fetch failed with extended fields. Retrying with core fields...`);
+            const fallbackRes = await axios.get(leadsUrl, {
+              params: leadsUrl.includes('?') ? {} : { access_token: token, fields: 'created_time,id,ad_id,form_id,field_data', limit: 100 }
+            });
+            leadsData = fallbackRes.data;
+          }
           
-          const leadsData = leadsRes.data;
-          const leads = leadsData.data || [];
+          const leads = leadsData?.data || [];
           
           for (const rawLead of leads) {
-            // Map lead fields using helper logic
             const leadDetails = {
               externalId: rawLead.id,
-              createdTime: rawLead.created_time,
+              createdTime: rawLead.created_time || new Date(),
               adId: rawLead.ad_id,
-              formId: rawLead.form_id,
+              formId: rawLead.form_id || form.id,
               campaignName: rawLead.campaign_name,
               adSetName: rawLead.adset_name,
               adName: rawLead.ad_name,
               pageName: pageName,
               formName: form.name,
               customFields: {},
+              loanAmount: undefined,
+              propertyValue: undefined,
+              city: undefined,
               rawData: rawLead
             };
 
             if (rawLead.field_data) {
               rawLead.field_data.forEach(field => {
-                const name = field.name.toLowerCase();
-                const value = field.values && field.values.length > 0 ? field.values[0] : '';
+                const rawName = (field.name || '').trim();
+                const name = rawName.toLowerCase();
+                const value = field.values && field.values.length > 0 ? String(field.values[0]).trim() : '';
                 
-                if (name === 'full_name' || name === 'name') leadDetails.fullName = value;
-                else if (name === 'first_name') leadDetails.firstName = value;
-                else if (name === 'last_name') leadDetails.lastName = value;
-                else if (name === 'email') leadDetails.email = value;
-                else if (name === 'phone_number' || name === 'phone') leadDetails.phone = value;
-                else {
-                  leadDetails.customFields[field.name] = value;
+                if (!value) return;
+
+                if (name === 'full_name' || name === 'fullname' || name === 'name' || name === 'your_name' || name === 'full name' || name.includes('full_name') || name.includes('fullname') || name === 'your_full_name' || name === 'applicant_name') {
+                  leadDetails.fullName = value;
+                } else if (name === 'first_name' || name === 'fname' || name === 'first name' || name.includes('first_name')) {
+                  leadDetails.firstName = value;
+                } else if (name === 'last_name' || name === 'lname' || name === 'last name' || name.includes('last_name')) {
+                  leadDetails.lastName = value;
+                } else if (name.includes('email')) {
+                  leadDetails.email = value;
+                } else if (name.includes('phone') || name.includes('mobile') || name.includes('contact') || name.includes('cell') || name.includes('number')) {
+                  leadDetails.phone = value;
+                } else if (name.includes('city') || name.includes('location') || name.includes('address')) {
+                  leadDetails.city = value;
+                  leadDetails.customFields[rawName] = value;
+                } else {
+                  leadDetails.customFields[rawName] = value;
+                  const cleanNum = parseInt(String(value).replace(/[^0-9]/g, ''), 10);
+                  if (!isNaN(cleanNum) && cleanNum > 0) {
+                    if (name.includes('loan') || name.includes('mortgage') || name.includes('borrow')) {
+                      leadDetails.loanAmount = cleanNum;
+                    } else if (name.includes('property') || name.includes('purchase') || name.includes('budget') || name.includes('price') || name.includes('value')) {
+                      leadDetails.propertyValue = cleanNum;
+                    }
+                  }
                 }
               });
+
               if (!leadDetails.fullName && (leadDetails.firstName || leadDetails.lastName)) {
                 leadDetails.fullName = `${leadDetails.firstName || ''} ${leadDetails.lastName || ''}`.trim();
               }
@@ -560,6 +559,9 @@ class MessengerService {
                   source: 'facebook',
                   externalId: leadDetails.externalId,
                   stage: 'new_lead',
+                  loanAmount: leadDetails.loanAmount,
+                  propertyValue: leadDetails.propertyValue,
+                  address: leadDetails.city,
                   createdAt: new Date(leadDetails.createdTime),
                   metaData: {
                     campaignName: leadDetails.campaignName,
@@ -570,39 +572,56 @@ class MessengerService {
                     customFields: leadDetails.customFields,
                     rawData: leadDetails.rawData,
                     webhookTimestamp: new Date(leadDetails.createdTime)
-                  }
+                  },
+                  notes: [{ content: `✨ Lead generated from Meta Leadgen Form: "${leadDetails.formName}"` }]
                 });
                 totalSynced++;
-
+                console.log(`✅ [MessengerService] Created new Client: ${client.fullName} (${client._id})`);
 
                 // Emit to Socket.io to notify UI in real-time
                 if (app) {
                   const io = app.get('io');
-                  if (io) io.emit('new_lead', client);
+                  if (io) {
+                    io.emit('new_lead', client);
+                    io.emit('new_client', client);
+                  }
                 }
               } catch (dbErr) {
-                // If parallel processes create it or index fails
                 if (dbErr.code === 11000) {
                   console.warn(`ℹ️ [MessengerService] Client with externalId ${leadDetails.externalId} was created concurrently. Skipping.`);
                 } else {
                   console.error(`❌ [MessengerService] DB Save Error for lead ${leadDetails.externalId}:`, dbErr.message);
                 }
               }
+            } else {
+              // Update externalId / custom fields if missing
+              let updated = false;
+              if (!existing.externalId) {
+                existing.externalId = leadDetails.externalId;
+                updated = true;
+              }
+              if (!existing.loanAmount && leadDetails.loanAmount) {
+                existing.loanAmount = leadDetails.loanAmount;
+                updated = true;
+              }
+              if (updated) {
+                await existing.save();
+              }
             }
           }
 
           // Advance to next page of leads
-          leadsUrl = leadsData.paging?.next || null;
+          leadsUrl = leadsData?.paging?.next || null;
           leadsParams = {}; // Parameters already embedded in next page URL
 
           if (leadsUrl) {
-            // Throttling: Pause 300ms between paginated requests to respect Meta API rate limit
+            // Throttling: Pause 300ms between paginated requests
             await sleep(300);
           }
         }
         
-        // Sleep between forms as well
-        await sleep(500);
+        // Sleep between forms
+        await sleep(400);
       }
 
       console.log(`✅ [MessengerService] Historical lead sync complete. Total new leads: ${totalSynced}`);

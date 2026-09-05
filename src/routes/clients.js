@@ -51,9 +51,14 @@ router.get('/', protect, async (req, res) => {
     triggerBackgroundLeadSync(req.app);
 
     const { stage, source, search, page = 1, limit = 20 } = req.query;
-    const filter = { isArchived: false };
+    // Strictly restrict to Meta Lead Ads (Facebook & Instagram) and manual deals. Exclude direct message contacts completely.
+    const filter = { 
+      isArchived: { $ne: true }, 
+      source: { $in: ['facebook', 'instagram', 'manual'] },
+      platformContactId: { $exists: false }
+    };
     if (stage) filter.stage = stage;
-    if (source) filter.source = source;
+    if (source && ['facebook', 'instagram', 'manual'].includes(source)) filter.source = source;
     if (search) {
       filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
@@ -76,11 +81,15 @@ router.get('/', protect, async (req, res) => {
 // POST /api/clients
 router.post('/', protect, async (req, res) => {
   try {
+    if (req.body.source === 'email') {
+      return res.status(400).json({ success: false, message: 'Email leads are disabled. Only Ads are supported.' });
+    }
     const client = await Client.create({ ...req.body });
-    req.app.get('io')?.emit('new_lead', client);
-
-    // Email notifications (both admin alert & client auto-responder) 
-    // are now centrally handled by the Client model's post-save hook.
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('new_lead', client);
+      io.emit('new_client', client);
+    }
 
     res.status(201).json({ success: true, client });
   } catch (err) {
@@ -106,7 +115,11 @@ router.put('/:id', protect, async (req, res) => {
   try {
     const client = await Client.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
-    req.app.get('io')?.emit('update_lead', client);
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('update_lead', client);
+      io.emit('update_client', client);
+    }
     res.json({ success: true, client });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -159,11 +172,49 @@ router.post('/:id/documents', protect, upload.single('file'), async (req, res) =
 router.post('/sync-meta-leads', protect, async (req, res) => {
   try {
     const messenger = require('../services/messenger');
-    const syncedCount = await messenger.syncHistoricalLeads();
+    const syncedCount = await messenger.syncHistoricalLeads(req.app);
     res.json({ success: true, count: syncedCount });
   } catch (err) {
     console.error('❌ Meta Sync Endpoint Error:', err);
     res.status(500).json({ success: false, message: err.message || 'Internal Server Error during Meta Sync' });
+  }
+});
+
+// POST /api/clients/clear-all-leads (Wipes all old leads, conversations, messages, and logs)
+router.post('/clear-all-leads', protect, async (req, res) => {
+  try {
+    const { Conversation, Message } = require('../models/Conversation');
+    const WebhookLog = require('../models/WebhookLog');
+
+    const clientCount = await Client.countDocuments();
+    
+    // 1. Delete all messages
+    await Message.deleteMany({});
+    // 2. Delete all conversations
+    await Conversation.deleteMany({});
+    // 3. Delete all clients
+    await Client.deleteMany({});
+    // 4. Clear webhook logs
+    await WebhookLog.deleteMany({});
+
+    console.log(`🧹 [Pipeline Reset] Wiped ${clientCount} old leads, conversations, and webhook logs.`);
+
+    // Broadcast clear event via socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('new_lead', null);
+      io.emit('new_client', null);
+      io.emit('update_lead', null);
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully wiped ${clientCount} old leads and conversations. Your CRM is now brand new and fresh!`,
+      deletedCount: clientCount
+    });
+  } catch (err) {
+    console.error('❌ Error clearing all leads:', err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

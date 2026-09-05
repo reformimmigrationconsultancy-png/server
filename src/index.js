@@ -49,7 +49,59 @@ const settingsRoutes = require('./routes/settings');
 
 
 // Connect to MongoDB
-connectDB();
+connectDB().then(async () => {
+  try {
+    const Client = require('./models/Client');
+    const { Conversation, Message } = require('./models/Conversation');
+
+    // Purge direct chat message contacts, dummy test leads ('Facebook user'), and blank leads with no contact info
+    const nonMetaDeleted = await Client.deleteMany({
+      $or: [
+        { platformContactId: { $exists: true } },
+        { fullName: { $regex: /^facebook user$/i } },
+        { fullName: { $regex: /^facebook user /i } },
+        { 
+          $and: [
+            { $or: [{ email: { $exists: false } }, { email: null }, { email: '' }, { email: 'N/A' }] },
+            { $or: [{ phone: { $exists: false } }, { phone: null }, { phone: '' }, { phone: 'N/A' }] }
+          ]
+        }
+      ]
+    });
+    // Purge chat messages and conversations
+    await Message.deleteMany({});
+    await Conversation.deleteMany({});
+
+    if (nonMetaDeleted.deletedCount > 0) {
+      console.log(`🧹 [Strict Meta Filter] Purged ${nonMetaDeleted.deletedCount} chat message / blank / test leads.`);
+    }
+
+    if (process.env.RESET_OLD_LEADS === 'true') {
+      const { Conversation, Message } = require('./models/Conversation');
+      const WebhookLog = require('./models/WebhookLog');
+      
+      const count = await Client.countDocuments();
+      await Message.deleteMany({});
+      await Conversation.deleteMany({});
+      await Client.deleteMany({});
+      await WebhookLog.deleteMany({});
+      console.log(`🧹 [Startup Reset] Successfully wiped ${count} old leads & conversations for a fresh start!`);
+      
+      // Update .env to false so it only runs once
+      const fs = require('fs');
+      const path = require('path');
+      const envFile = path.join(__dirname, '..', '.env');
+      if (fs.existsSync(envFile)) {
+        let content = fs.readFileSync(envFile, 'utf-8');
+        content = content.replace(/^RESET_OLD_LEADS=.*$/m, 'RESET_OLD_LEADS=false');
+        fs.writeFileSync(envFile, content, 'utf-8');
+        process.env.RESET_OLD_LEADS = 'false';
+      }
+    }
+  } catch (wipeErr) {
+    console.error('⚠️ [Startup Reset] Wipe error:', wipeErr.message);
+  }
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -215,11 +267,19 @@ function verifyMetaSignature(req) {
 async function logWebhookEvent(eventId, eventType, platform, payload, status = 'success', errorMessage = null) {
   try {
     const WebhookLog = require('./models/WebhookLog');
+    const Client = require('./models/Client');
     if (eventId) {
-      const existing = await WebhookLog.findOne({ eventId });
+      const existing = await WebhookLog.findOne({ eventId, status: 'success' });
+      // Only skip if the event previously succeeded AND the client actually exists in DB
       if (existing) {
-        console.log(`ℹ️ [Webhook] Duplicate event skipped: ${eventId}`);
-        return { isDuplicate: true };
+        const rawId = eventId.replace(/^(leadgen_|google_|website_)/, '');
+        const clientExists = await Client.findOne({ 
+          $or: [{ externalId: eventId }, { externalId: rawId }] 
+        });
+        if (clientExists) {
+          console.log(`ℹ️ [Webhook] Duplicate event skipped (already created): ${eventId}`);
+          return { isDuplicate: true };
+        }
       }
     }
     await WebhookLog.create({
@@ -254,7 +314,6 @@ async function processFacebookWebhook(body, app) {
             const logResult = await logWebhookEvent(eventId, 'leadgen', 'facebook', change.value);
             
             if (logResult.isDuplicate) {
-              // Log the duplicate skip separately
               await WebhookLog.create({
                 eventId: `${eventId}_dup_${Date.now()}`,
                 eventType: 'leadgen',
@@ -272,24 +331,24 @@ async function processFacebookWebhook(body, app) {
 
               const Client = require('./models/Client');
               
-              // Check if lead already exists by externalId
+              // Check if lead already exists by externalId or email
               let client = await Client.findOne({ externalId: leadgenId });
               
-              if (!client) {
-                // Fallback: check by email if provided
-                if (leadDetails.email && leadDetails.email !== '') {
-                  client = await Client.findOne({ email: leadDetails.email });
-                }
+              if (!client && leadDetails.email && leadDetails.email !== '') {
+                client = await Client.findOne({ email: leadDetails.email });
               }
 
               if (!client) {
                  client = await Client.create({
                     fullName: leadDetails.fullName || `Meta Lead ${leadgenId.substring(0, 5)}`,
-                    email: leadDetails.email,
-                    phone: leadDetails.phone,
+                    email: leadDetails.email || undefined,
+                    phone: leadDetails.phone || undefined,
                     source: 'facebook',
                     externalId: leadgenId,
                     stage: 'new_lead',
+                    loanAmount: leadDetails.loanAmount,
+                    propertyValue: leadDetails.propertyValue,
+                    address: leadDetails.city,
                     metaData: {
                       campaignName: leadDetails.campaignName,
                       adSetName: leadDetails.adSetName,
@@ -300,17 +359,18 @@ async function processFacebookWebhook(body, app) {
                       rawData: leadDetails.rawData,
                       webhookTimestamp: new Date()
                     },
-                    notes: [{ content: `Lead generated from Meta Ad (Campaign: ${leadDetails.campaignName || 'Unknown'}, Ad: ${leadDetails.adName || 'Unknown'})` }]
+                    notes: [{ content: `🎉 Lead generated from Meta Ad (Campaign: ${leadDetails.campaignName || 'Unknown'}, Ad: ${leadDetails.adName || 'Unknown'})` }]
                  });
                  console.log(`✅ [Webhook] Created new client from Meta Ads: ${client.fullName}`);
-                 
-                 // Email notifications are automatically handled by the Client model's post-save hook
-                 
               } else {
                  console.log(`ℹ️ [Webhook] Lead already exists: ${client.fullName}`);
                  let updated = false;
                  if (!client.externalId) {
                    client.externalId = leadgenId;
+                   updated = true;
+                 }
+                 if (leadDetails.loanAmount && !client.loanAmount) {
+                   client.loanAmount = leadDetails.loanAmount;
                    updated = true;
                  }
                  if (!client.metaData?.customFields && leadDetails.customFields) {
@@ -323,11 +383,14 @@ async function processFacebookWebhook(body, app) {
                  }
               }
 
-              // Emit to Socket.io to notify UI
+              // Update log status to success
+              await WebhookLog.findOneAndUpdate({ eventId }, { status: 'success', errorMessage: null });
+
+              // Emit to Socket.io to notify UI in real time
               const io = app.get('io');
               if (io) {
                 io.emit('new_lead', client);
-                io.emit('new_client', client); // Emit both for consistency across frontend components
+                io.emit('new_client', client);
               }
 
             } catch (err) {
@@ -337,8 +400,6 @@ async function processFacebookWebhook(body, app) {
           }
         }
       }
-
-      // --- 2. HANDLE MESSAGES (Messaging) REMOVED ---
     }
   }
 }
@@ -457,7 +518,9 @@ app.post('/webhook/google', async (req, res) => {
     });
 
     // Broadcast via socket.io
-    if (typeof io !== 'undefined') {
+    const io = app.get('io') || (typeof io !== 'undefined' ? io : null);
+    if (io) {
+      io.emit('new_lead', client);
       io.emit('new_client', client);
     }
 
@@ -465,6 +528,90 @@ app.post('/webhook/google', async (req, res) => {
   } catch (error) {
     console.error('❌ [Google Webhook] Error processing Google Ads webhook:', error.message);
     return res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ WEBSITE & EXTERNAL LEAD WEBHOOK INTAKE (Public, CORS enabled)
+app.post(['/api/leads/public', '/api/clients/public', '/webhook/website'], async (req, res) => {
+  try {
+    const Client = require('./models/Client');
+    const WebhookLog = require('./models/WebhookLog');
+
+    const body = req.body || {};
+    console.log('📡 [Website Lead] Incoming lead submission:', JSON.stringify(body, null, 2));
+
+    const fullName = body.fullName || body.name || `${body.firstName || ''} ${body.lastName || ''}`.trim() || 'Website Visitor';
+    const email = (body.email || body.emailAddress || '').trim().toLowerCase();
+    const phone = (body.phone || body.phoneNumber || body.mobile || body.contact || '').trim();
+    const source = body.source || 'website';
+    const message = body.message || body.notes || body.comment || '';
+    const city = body.city || body.address || '';
+    
+    // Parse loan and property amounts
+    let loanAmount = body.loanAmount || body.loan_amount || body.amount;
+    let propertyValue = body.propertyValue || body.property_value || body.purchasePrice || body.propertyPrice;
+
+    if (loanAmount) loanAmount = parseInt(String(loanAmount).replace(/[^0-9]/g, ''), 10) || undefined;
+    if (propertyValue) propertyValue = parseInt(String(propertyValue).replace(/[^0-9]/g, ''), 10) || undefined;
+
+    if (!fullName && !email && !phone) {
+      return res.status(400).json({ success: false, message: 'Please provide at least a name, email, or phone number.' });
+    }
+
+    const eventId = `website_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    // Create client in CRM
+    const client = await Client.create({
+      fullName,
+      email: email || undefined,
+      phone: phone || undefined,
+      source: ['whatsapp', 'facebook', 'instagram', 'email', 'website', 'call', 'manual', 'google'].includes(source) ? source : 'website',
+      stage: 'new_lead',
+      loanAmount,
+      propertyValue,
+      address: city || undefined,
+      metaData: {
+        campaignName: body.campaign || body.campaignName || 'Website Contact Form',
+        formName: body.formName || 'Website Landing Page',
+        customFields: body.customFields || body,
+        webhookTimestamp: new Date()
+      },
+      notes: message ? [{ content: `📝 Message from website submission:\n${message}` }] : []
+    });
+
+    console.log(`✅ [Website Lead] Successfully created client: ${client.fullName} (${client._id})`);
+
+    // Log to WebhookLog
+    await WebhookLog.create({
+      eventId,
+      eventType: 'leadgen',
+      platform: 'website',
+      payload: body,
+      status: 'success'
+    });
+
+    // Real-time Socket.io broadcast to UI
+    const io = app.get('io');
+    if (io) {
+      io.emit('new_lead', client);
+      io.emit('new_client', client);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Lead received and recorded successfully!',
+      clientId: client._id,
+      lead: {
+        id: client._id,
+        fullName: client.fullName,
+        source: client.source,
+        createdAt: client.createdAt
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ [Website Lead] Error saving lead:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -567,7 +714,6 @@ app.post('/webhook/whatsapp', async (req, res) => {
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
-
 // --- PRODUCTION SETUP ---
 // Serve static files from the React app build
 app.use(express.static(path.join(__dirname, '../../client/dist')));
@@ -611,22 +757,18 @@ io.on('connection', (socket) => {
   });
 });
 
-// IMAP Sync (Incoming Email Service)
-const EmailSyncService = require('./services/emailSync');
-const emailSync = new EmailSyncService(app);
-emailSync.start();
-
 // Meta Leads Auto-Sync Service (Runs in background)
 const messenger = require('./services/messenger');
 async function runMetaLeadsSync() {
-  console.log('🔄 [Auto-Sync Service] Checking Meta Leads & Messages in background...');
+  console.log('🔄 [Auto-Sync Service] Checking Meta Leads & Webhook subscriptions in background...');
   try {
+    // Auto-subscribe page to webhooks to ensure continuous real-time delivery
+    await messenger.subscribePageToWebhooks().catch(() => {});
+
     const syncedCount = await messenger.syncHistoricalLeads(app);
     if (syncedCount > 0) {
       console.log(`✅ [Auto-Sync Service] Meta lead sync complete. Synced: ${syncedCount} new leads.`);
     }
-    // Also sync chat conversations
-    await messenger.syncAll(app);
   } catch (err) {
     console.error('❌ [Auto-Sync Service] Error during background Meta auto-sync:', err.message);
   }
@@ -670,9 +812,4 @@ const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
-// Trigger nodemon restart: Meta Ads fully configured and active with permanent page token. (Updated)
-
-
-
-
- 
+// Email polling completely disabled. Meta Leads & Ads active.

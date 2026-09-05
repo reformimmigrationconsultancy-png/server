@@ -175,18 +175,64 @@ router.post('/facebook/update-token', protect, async (req, res) => {
 });
 
 /**
- * GET /api/settings/facebook/webhook-logs
- * Returns the last 20 webhook processing logs for debugging
+ * POST /api/settings/facebook/subscribe-page
+ * Subscribes the Facebook Page to Leadgen and Messaging Webhooks
  */
-router.get('/facebook/webhook-logs', protect, async (req, res) => {
+router.post('/facebook/subscribe-page', protect, async (req, res) => {
   try {
-    const WebhookLog = require('../models/WebhookLog');
-    const logs = await WebhookLog.find()
-      .sort({ createdAt: -1 })
-      .limit(20);
-    return res.json({ success: true, logs });
+    const result = await messenger.subscribePageToWebhooks();
+    if (result && result.success) {
+      return res.json({ success: true, message: 'Facebook Page successfully subscribed to Leadgen Webhooks!' });
+    } else {
+      return res.status(400).json({ success: false, message: result?.error || 'Failed to subscribe page to webhooks' });
+    }
   } catch (err) {
-    console.error('❌ [Settings] Error fetching webhook logs:', err.message);
+    console.error('❌ [Settings] Subscribe Page Error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * POST /api/settings/test-lead
+ * Dispatches a simulated live lead to verify real-time pipeline reception
+ */
+router.post('/test-lead', protect, async (req, res) => {
+  try {
+    const Client = require('../models/Client');
+    const { source = 'facebook', fullName, email, phone, loanAmount, propertyValue } = req.body;
+
+    const dummyLead = {
+      fullName: fullName || `Test ${source.toUpperCase()} Lead ${Math.floor(1000 + Math.random() * 9000)}`,
+      email: email || `test.lead.${Date.now()}@example.com`,
+      phone: phone || '+1 (555) 019-' + Math.floor(1000 + Math.random() * 9000),
+      source: source || 'facebook',
+      stage: 'new_lead',
+      loanAmount: loanAmount || 550000,
+      propertyValue: propertyValue || 750000,
+      metaData: {
+        campaignName: 'Test Diagnostic Campaign',
+        formName: 'Test Lead Verification Form',
+        webhookTimestamp: new Date()
+      },
+      notes: [{ content: `🧪 Diagnostic Test Lead generated from CRM Settings to verify pipeline flow.` }]
+    };
+
+    const client = await Client.create(dummyLead);
+
+    // Broadcast via socket.io
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('new_lead', client);
+      io.emit('new_client', client);
+    }
+
+    return res.json({ 
+      success: true, 
+      message: `Test lead successfully created and broadcast to pipeline!`, 
+      client 
+    });
+  } catch (err) {
+    console.error('❌ [Settings] Test Lead Error:', err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 });

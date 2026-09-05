@@ -58,6 +58,39 @@ clientSchema.post('save', function(doc) {
     (async () => {
       try {
         const { sendNotificationEmail } = require('../utils/notifications');
+
+        // Clean & validate email & phone
+        const cleanEmail = doc.email && typeof doc.email === 'string' ? doc.email.trim().toLowerCase() : '';
+        const cleanPhone = doc.phone && typeof doc.phone === 'string' ? doc.phone.trim() : '';
+        const cleanName = doc.fullName && typeof doc.fullName === 'string' ? doc.fullName.trim().toLowerCase() : '';
+
+        const hasValidEmail = cleanEmail !== '' && cleanEmail !== 'n/a' && cleanEmail.includes('@') && !cleanEmail.includes('example.com') && !cleanEmail.includes('@fb.com');
+        const hasValidPhone = cleanPhone !== '' && cleanPhone !== 'n/a' && cleanPhone.length >= 5;
+
+        const isDummyName = cleanName === 'facebook user' || 
+                            cleanName === 'facebook user test' || 
+                            cleanName === 'test lead' || 
+                            cleanName === 'google user' || 
+                            cleanName === 'website visitor' || 
+                            cleanName.startsWith('meta lead ') || 
+                            cleanName.startsWith('facebook user ');
+
+        // STRICT GUARD: Do NOT send notification email if lead has neither valid email nor valid phone, or if it's a dummy test lead without real contact info
+        if (!hasValidEmail && !hasValidPhone) {
+          console.log(`⚠️ [ClientModel] Skipping email alert: Lead '${doc.fullName}' has no valid email or phone number.`);
+          return;
+        }
+
+        if (isDummyName && !hasValidEmail && !hasValidPhone) {
+          console.log(`⚠️ [ClientModel] Skipping email alert: Lead '${doc.fullName}' is a test/dummy lead.`);
+          return;
+        }
+
+        if (doc.source === 'facebook') {
+          console.log(`⚠️ [ClientModel] Skipping email alert: Lead '${doc.fullName}' is from Meta Ads (Facebook). Email notifications disabled for this source.`);
+          return;
+        }
+
         let sourceLabel = doc.source ? doc.source.charAt(0).toUpperCase() + doc.source.slice(1) : 'Unknown';
         if (doc.source === 'facebook') sourceLabel = 'Meta Ads';
         if (doc.source === 'google') sourceLabel = 'Google Ads';
@@ -95,7 +128,7 @@ clientSchema.post('save', function(doc) {
         await sendNotificationEmail(subject, `New lead created via ${sourceLabel}.`, html);
 
         // Send auto-responder email to Client (if email is valid)
-        if (doc.email && doc.email.includes('@') && !doc.email.includes('example.com')) {
+        if (hasValidEmail) {
           const clientSubject = `Thank you for your interest, ${doc.fullName}!`;
           const clientHtml = `
             <h3>Hi ${doc.fullName},</h3>
