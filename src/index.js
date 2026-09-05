@@ -132,7 +132,7 @@ const allowedOrigins = [
   'http://localhost:8000',
   'https://manpreetcrm.com',
   'https://www.manpreetcrm.com',
-  'https://lead-tgdl.onrender.com', // Explicitly allow Render frontend domain
+  'https://client-16h2.onrender.com', // Explicitly allow new Render frontend domain
   process.env.CLIENT_URL,
   process.env.PUBLIC_URL
 ].filter(Boolean);
