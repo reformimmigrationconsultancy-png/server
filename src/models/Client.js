@@ -86,10 +86,6 @@ clientSchema.post('save', function(doc) {
           return;
         }
 
-        if (doc.source === 'facebook') {
-          console.log(`⚠️ [ClientModel] Skipping email alert: Lead '${doc.fullName}' is from Meta Ads (Facebook). Email notifications disabled for this source.`);
-          return;
-        }
 
         let sourceLabel = doc.source ? doc.source.charAt(0).toUpperCase() + doc.source.slice(1) : 'Unknown';
         if (doc.source === 'facebook') sourceLabel = 'Meta Ads';
