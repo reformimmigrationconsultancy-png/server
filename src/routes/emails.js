@@ -94,9 +94,34 @@ router.post('/send', protect, async (req, res) => {
     }
 
     if (templateKey && TEMPLATES[templateKey]) {
-      const name = client ? client.fullName : 'Valued Customer';
       finalSubject = finalSubject || TEMPLATES[templateKey].subject;
-      finalBody = finalBody || TEMPLATES[templateKey].body.replace('{{name}}', name);
+      finalBody = finalBody || TEMPLATES[templateKey].body;
+    }
+
+    // Replace all template variables if client exists
+    if (client) {
+      const clientFullName = client.fullName || 'Valued Customer';
+      const firstName = clientFullName.split(' ')[0] || 'there';
+      const lastName = clientFullName.split(' ').slice(1).join(' ') || '';
+      
+      const replaceVars = (txt) => {
+        if (!txt) return '';
+        return txt
+          .replace(/\{\{fullName\}\}/g, clientFullName)
+          .replace(/\{\{full_name\}\}/g, clientFullName)
+          .replace(/\{\{name\}\}/g, clientFullName)
+          .replace(/\{\{firstName\}\}/g, firstName)
+          .replace(/\{\{first_name\}\}/g, firstName)
+          .replace(/\{\{lastName\}\}/g, lastName)
+          .replace(/\{\{last_name\}\}/g, lastName)
+          .replace(/\{\{email\}\}/g, client.email || '')
+          .replace(/\{\{phone\}\}/g, client.phone || '')
+          .replace(/\{\{source\}\}/g, client.source || '')
+          .replace(/\{\{stage\}\}/g, client.stage || '');
+      };
+
+      finalSubject = replaceVars(finalSubject);
+      finalBody = replaceVars(finalBody);
     }
 
     // Use PHP Mailer if configured
