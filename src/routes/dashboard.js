@@ -9,6 +9,11 @@ const router = express.Router();
 // GET /api/dashboard/stats
 router.get('/stats', protect, async (req, res) => {
   try {
+    const Reminder = require('../models/Reminder');
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
     const [
       totalLeads,
       newLeads,
@@ -20,6 +25,8 @@ router.get('/stats', protect, async (req, res) => {
       bySource,
       recentCalls,
       openConversations,
+      overdueFollowUps,
+      dueTodayFollowUps,
     ] = await Promise.all([
       Client.countDocuments({ isArchived: false }),
       Client.countDocuments({ isArchived: false, stage: 'new_lead' }),
@@ -34,6 +41,17 @@ router.get('/stats', protect, async (req, res) => {
       ]),
       Call.find({}).populate('client', 'fullName').sort({ callTime: -1 }).limit(5),
       Conversation.countDocuments({ status: 'open' }),
+      Reminder.countDocuments({
+        isCompleted: false,
+        status: { $ne: 'completed' },
+        dueDate: { $lt: startOfToday },
+        $or: [{ snoozedUntil: { $exists: false } }, { snoozedUntil: null }, { snoozedUntil: { $lte: now } }]
+      }),
+      Reminder.countDocuments({
+        isCompleted: false,
+        status: { $ne: 'completed' },
+        dueDate: { $gte: startOfToday, $lte: endOfToday }
+      })
     ]);
 
     const conversionRate = totalLeads > 0 ? ((closed / totalLeads) * 100).toFixed(1) : 0;
@@ -49,6 +67,8 @@ router.get('/stats', protect, async (req, res) => {
         bySource,
         recentCalls,
         openConversations,
+        overdueFollowUps,
+        dueTodayFollowUps,
       },
     });
   } catch (err) {

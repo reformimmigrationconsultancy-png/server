@@ -98,7 +98,16 @@ const executeStep = async (execution) => {
         priority: priority || 'medium',
         notes: replaceVariables(notes, client, admin),
         assignedTo: admin._id,
-        createdBy: admin._id
+        createdBy: admin._id,
+        isAutomated: true,
+        automation: execution.automation ? execution.automation._id : null,
+        automationExecution: execution._id,
+        history: [{
+          action: 'created',
+          performedBy: admin._id,
+          timestamp: new Date(),
+          details: `Automated task created via '${execution.automation?.name || 'Automation'}'`
+        }]
       });
 
       execution.history.push({ stepIndex: currentStepIndex, action: 'create_task', status: 'success', details: `Task created: ${title}` });
