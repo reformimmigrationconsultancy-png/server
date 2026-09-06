@@ -61,6 +61,21 @@ const executeStep = async (execution) => {
     return;
   }
 
+  // Check stop conditions (e.g., if lead stage changed to a stop stage)
+  if (automation.stopConditions && Array.isArray(automation.stopConditions.stopOnStage)) {
+    if (automation.stopConditions.stopOnStage.includes(client.stage)) {
+      execution.status = 'stopped';
+      execution.history.push({
+        stepIndex: currentStepIndex,
+        action: 'stop',
+        status: 'success',
+        details: `Automation stopped automatically because lead stage is '${client.stage}'`
+      });
+      await execution.save();
+      return;
+    }
+  }
+
   // Idempotency check: Did we already execute this step index successfully?
   const alreadyRan = execution.history.find(h => h.stepIndex === currentStepIndex && h.status === 'success');
   if (alreadyRan) {
