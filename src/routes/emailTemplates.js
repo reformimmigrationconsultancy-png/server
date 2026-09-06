@@ -5,6 +5,7 @@ const EmailTemplate = require('../models/EmailTemplate');
 const Automation = require('../models/Automation');
 const Client = require('../models/Client');
 const nodemailer = require('nodemailer');
+const { resolveVariables } = require('../utils/variableResolver');
 
 // Helper for transporter
 const getTransporter = () => {
@@ -189,41 +190,31 @@ router.post('/:id/duplicate', auth, async (req, res) => {
 // 6. POST /api/email-templates/test-send - Safe test email sender to admin
 router.post('/test-send', auth, async (req, res) => {
   try {
-    const { recipientEmail, subject, body } = req.body;
+    const { recipientEmail, subject, body, leadId } = req.body;
 
     if (!recipientEmail || !subject || !body) {
       return res.status(400).json({ success: false, message: 'Recipient email, subject, and body are required' });
     }
 
-    // Render test tags with sample data
-    const sampleData = {
-      '{{fullName}}': 'Test User',
-      '{{first_name}}': 'Test',
-      '{{last_name}}': 'User',
-      '{{email}}': recipientEmail,
-      '{{phone}}': '+1 (555) 019-2834',
-      '{{source}}': 'Meta Ads',
-      '{{admin_name}}': req.user.name || 'CRM Team'
-    };
-
-    let renderedSubject = subject;
-    let renderedBody = body;
-
-    for (const [tag, val] of Object.entries(sampleData)) {
-      const escapedTag = tag.replace(/[{}]/g, '\\$&');
-      renderedSubject = renderedSubject.replace(new RegExp(escapedTag, 'g'), val);
-      renderedBody = renderedBody.replace(new RegExp(escapedTag, 'g'), val);
+    let lead = null;
+    if (leadId) {
+      lead = await Client.findById(leadId);
     }
+
+    // Resolve variables using real lead or default admin context
+    const renderedSubject = resolveVariables(subject, lead, req.user);
+    const renderedBody = resolveVariables(body, lead, req.user);
 
     // Append explicit test mode header
     const testHeaderHtml = `
       <div style="background-color: #fef3c7; border: 1px solid #f59e0b; color: #92400e; padding: 10px 16px; border-radius: 8px; font-family: Arial, sans-serif; font-size: 12px; margin-bottom: 16px;">
         <strong>⚠️ CRM TEST MODE EMAIL</strong><br/>
-        This is a preview test email generated from the CRM Email Template Center.
+        This is a test email preview generated from the CRM Email Template Center.
+        ${lead ? `<br/><em>Rendered using Lead: ${lead.fullName || lead.email}</em>` : '<br/><em>Rendered using Sample Data</em>'}
       </div>
     `;
 
-    const finalHtml = testHeaderHtml + renderedBody;
+    const finalHtml = testHeaderHtml + renderedBody.replace(/\n/g, '<br/>');
 
     // Send via transporter or PHP Mailer if configured
     if (process.env.PHP_MAILER_URL) {

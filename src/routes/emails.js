@@ -3,6 +3,7 @@ const nodemailer = require('nodemailer');
 const { Conversation, Message } = require('../models/Conversation');
 const Client = require('../models/Client');
 const { protect } = require('../middleware/auth');
+const { resolveVariables } = require('../utils/variableResolver');
 
 const router = express.Router();
 
@@ -98,30 +99,10 @@ router.post('/send', protect, async (req, res) => {
       finalBody = finalBody || TEMPLATES[templateKey].body;
     }
 
-    // Replace all template variables if client exists
+    // Replace template variables using centralized resolver
     if (client) {
-      const clientFullName = client.fullName || 'Valued Customer';
-      const firstName = clientFullName.split(' ')[0] || 'there';
-      const lastName = clientFullName.split(' ').slice(1).join(' ') || '';
-      
-      const replaceVars = (txt) => {
-        if (!txt) return '';
-        return txt
-          .replace(/\{\{fullName\}\}/g, clientFullName)
-          .replace(/\{\{full_name\}\}/g, clientFullName)
-          .replace(/\{\{name\}\}/g, clientFullName)
-          .replace(/\{\{firstName\}\}/g, firstName)
-          .replace(/\{\{first_name\}\}/g, firstName)
-          .replace(/\{\{lastName\}\}/g, lastName)
-          .replace(/\{\{last_name\}\}/g, lastName)
-          .replace(/\{\{email\}\}/g, client.email || '')
-          .replace(/\{\{phone\}\}/g, client.phone || '')
-          .replace(/\{\{source\}\}/g, client.source || '')
-          .replace(/\{\{stage\}\}/g, client.stage || '');
-      };
-
-      finalSubject = replaceVars(finalSubject);
-      finalBody = replaceVars(finalBody);
+      finalSubject = resolveVariables(finalSubject, client, req.user);
+      finalBody = resolveVariables(finalBody, client, req.user);
     }
 
     // Use PHP Mailer if configured

@@ -5,48 +5,10 @@ const Reminder = require('../models/Reminder');
 const Client = require('../models/Client');
 const User = require('../models/User');
 const { sendNotificationEmail } = require('../utils/notifications');
+const { resolveVariables } = require('../utils/variableResolver');
 
 const replaceVariables = (text, client, admin) => {
-  if (!text) return '';
-  let result = text;
-
-  const clientFullName = client?.fullName || 'Valued Customer';
-  const firstName = clientFullName.split(' ')[0] || 'there';
-  const lastName = clientFullName.split(' ').slice(1).join(' ') || '';
-  const email = client?.email || '';
-  const phone = client?.phone || '';
-  const source = client?.source || 'website';
-  const campaign = client?.metaData?.campaignName || '';
-  const stage = client?.stage || 'new_lead';
-  const adminName = admin?.name || 'Manpreet Singh';
-
-  const vars = {
-    '{{fullName}}': clientFullName,
-    '{{full_name}}': clientFullName,
-    '{{name}}': clientFullName,
-    '{{firstName}}': firstName,
-    '{{first_name}}': firstName,
-    '{{lastName}}': lastName,
-    '{{last_name}}': lastName,
-    '{{email}}': email,
-    '{{phone}}': phone,
-    '{{leadSource}}': source,
-    '{{lead_source}}': source,
-    '{{source}}': source,
-    '{{campaign}}': campaign,
-    '{{leadStage}}': stage,
-    '{{lead_stage}}': stage,
-    '{{stage}}': stage,
-    '{{adminName}}': adminName,
-    '{{admin_name}}': adminName,
-  };
-
-  for (const [key, value] of Object.entries(vars)) {
-    const escapedKey = key.replace(/[{}]/g, '\\$&');
-    result = result.replace(new RegExp(escapedKey, 'g'), value);
-  }
-
-  return result;
+  return resolveVariables(text, client, admin);
 };
 
 const executeStep = async (execution) => {
