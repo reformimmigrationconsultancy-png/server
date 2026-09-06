@@ -254,14 +254,24 @@ router.post('/', protect, async (req, res) => {
 
     // Calculate reminder time if requested
     let reminderTime = null;
+    let reminderOffsetMinutes = 0;
+
     if (reminderOption && reminderOption !== 'none') {
       const dueMs = new Date(dueDate).getTime();
-      let offsetMs = 0;
-      if (reminderOption === '15m') offsetMs = 15 * 60 * 1000;
-      if (reminderOption === '30m') offsetMs = 30 * 60 * 1000;
-      if (reminderOption === '1h') offsetMs = 60 * 60 * 1000;
-      if (reminderOption === '1d') offsetMs = 24 * 60 * 60 * 1000;
-      reminderTime = new Date(dueMs - offsetMs);
+      if (reminderOption === '5m') reminderOffsetMinutes = 5;
+      else if (reminderOption === '10m') reminderOffsetMinutes = 10;
+      else if (reminderOption === '15m') reminderOffsetMinutes = 15;
+      else if (reminderOption === '30m') reminderOffsetMinutes = 30;
+      else if (reminderOption === '1h') reminderOffsetMinutes = 60;
+      else if (reminderOption === '2h') reminderOffsetMinutes = 120;
+      else if (reminderOption === '1d') reminderOffsetMinutes = 1440;
+      else if (reminderOption === 'custom' && req.body.reminderOffsetMinutes) {
+        reminderOffsetMinutes = parseInt(req.body.reminderOffsetMinutes) || 0;
+      }
+
+      if (reminderOffsetMinutes > 0) {
+        reminderTime = new Date(dueMs - reminderOffsetMinutes * 60 * 1000);
+      }
     }
 
     const reminderData = {
@@ -275,6 +285,7 @@ router.post('/', protect, async (req, res) => {
       assignedTo: assignedTo || req.user._id,
       createdBy: req.user._id,
       reminderOption: reminderOption || 'none',
+      reminderOffsetMinutes,
       reminderTime,
       repeat: repeat || 'none',
       idempotencyKey,
@@ -370,7 +381,7 @@ router.put('/:id', protect, async (req, res) => {
   }
 });
 
-// POST /api/reminders/:id/complete - Complete task with explicit log
+// POST /api/reminders/:id/complete - Complete task with explicit log & notification resolution
 router.post('/:id/complete', protect, async (req, res) => {
   try {
     const reminder = await Reminder.findById(req.params.id);
@@ -378,6 +389,9 @@ router.post('/:id/complete', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Follow-up not found' });
     }
 
+    const Notification = require('../models/Notification');
+
+    // 1. Mark reminder as completed
     const updated = await populateReminderQuery(
       Reminder.findByIdAndUpdate(
         req.params.id,
@@ -398,6 +412,18 @@ router.post('/:id/complete', protect, async (req, res) => {
         { new: true }
       )
     );
+
+    // 2. Mark any related notifications for this reminder as read
+    await Notification.updateMany(
+      { entityId: req.params.id, readAt: null },
+      { $set: { readAt: new Date() } }
+    );
+
+    // Broadcast socket update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('reminder_updated', updated);
+    }
 
     res.json({ success: true, reminder: updated });
   } catch (err) {

@@ -28,11 +28,14 @@ const reminderSchema = new mongoose.Schema({
   
   reminderOption: {
     type: String,
-    enum: ['none', '15m', '30m', '1h', '1d'],
+    enum: ['none', '5m', '10m', '15m', '30m', '1h', '2h', '1d', 'custom'],
     default: 'none'
   },
+  reminderOffsetMinutes: { type: Number, default: 0 },
   reminderTime: { type: Date },
   reminderSent: { type: Boolean, default: false },
+  dueNowSent: { type: Boolean, default: false },
+  overdueSent: { type: Boolean, default: false },
 
   repeat: {
     type: String,
@@ -61,6 +64,8 @@ const reminderSchema = new mongoose.Schema({
 // Index for efficient querying by client, assignedTo, dueDate, and status
 reminderSchema.index({ client: 1, dueDate: 1, status: 1 });
 reminderSchema.index({ assignedTo: 1, dueDate: 1, status: 1 });
+reminderSchema.index({ reminderSent: 1, reminderTime: 1 });
+reminderSchema.index({ dueNowSent: 1, dueDate: 1 });
+reminderSchema.index({ overdueSent: 1, dueDate: 1 });
 
 module.exports = mongoose.model('Reminder', reminderSchema);
-

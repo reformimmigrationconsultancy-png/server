@@ -48,6 +48,7 @@ const messageRoutes = require('./routes/messages');
 const settingsRoutes = require('./routes/settings');
 const emailTemplatesRoutes = require('./routes/emailTemplates');
 const automationsRoutes = require('./routes/automations');
+const notificationsRoutes = require('./routes/notifications');
 
 
 // Connect to MongoDB
@@ -197,6 +198,11 @@ app.use('/api/automations', automationsRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api', messageRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/notifications', notificationsRoutes);
+
+// Start Server-Side Reminder Scheduler
+const { startScheduler: startReminderScheduler } = require('./services/reminderScheduler');
+startReminderScheduler(app);
 
 
 
