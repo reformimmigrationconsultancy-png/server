@@ -46,6 +46,8 @@ const dashboardRoutes = require('./routes/dashboard');
 const emailRoutes = require('./routes/emails');
 const messageRoutes = require('./routes/messages');
 const settingsRoutes = require('./routes/settings');
+const emailTemplatesRoutes = require('./routes/emailTemplates');
+const automationsRoutes = require('./routes/automations');
 
 
 // Connect to MongoDB
@@ -132,7 +134,7 @@ const allowedOrigins = [
   'http://localhost:8000',
   'https://manpreetcrm.com',
   'https://www.manpreetcrm.com',
-  'https://lead-tgdl.onrender.com', // Explicitly allow Render frontend domain
+  'https://client-16h2.onrender.com', // Explicitly allow new Render frontend domain
   process.env.CLIENT_URL,
   process.env.PUBLIC_URL
 ].filter(Boolean);
@@ -158,11 +160,12 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Start Automation Engine
+const { startEngine, enrollLead, stopAutomationsForLead } = require('./services/automationEngine');
+startEngine();
+
 // Static file serving for uploads
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-
-// Serve React static frontend assets
-app.use(express.static(path.join(__dirname, '../../client/dist')));
 
 // Image Upload Logic (Simple)
 const multer = require('multer');
@@ -189,6 +192,8 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/email-templates', emailTemplatesRoutes);
+app.use('/api/automations', automationsRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api', messageRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -362,6 +367,7 @@ async function processFacebookWebhook(body, app) {
                     notes: [{ content: `🎉 Lead generated from Meta Ad (Campaign: ${leadDetails.campaignName || 'Unknown'}, Ad: ${leadDetails.adName || 'Unknown'})` }]
                  });
                  console.log(`✅ [Webhook] Created new client from Meta Ads: ${client.fullName}`);
+                 await enrollLead(client);
               } else {
                  console.log(`ℹ️ [Webhook] Lead already exists: ${client.fullName}`);
                  let updated = false;
@@ -505,6 +511,7 @@ app.post('/webhook/google', async (req, res) => {
 
     const client = await Client.create(clientData);
     console.log(`✅ [Google Webhook] Successfully created new Google Ads lead: ${client.fullName} (ID: ${client._id})`);
+    await enrollLead(client);
 
     // Email notifications are automatically handled by the Client model's post-save hook
 
@@ -580,6 +587,7 @@ app.post(['/api/leads/public', '/api/clients/public', '/webhook/website'], async
     });
 
     console.log(`✅ [Website Lead] Successfully created client: ${client.fullName} (${client._id})`);
+    await enrollLead(client);
 
     // Log to WebhookLog
     await WebhookLog.create({
@@ -664,8 +672,12 @@ app.post('/webhook/whatsapp', async (req, res) => {
             stage: 'new_lead'
          });
          console.log(`✨ Created new client from WhatsApp: ${userName}`);
+         await enrollLead(client);
 
          // Email notifications are automatically handled by the Client model's post-save hook
+      } else {
+         // Lead replied, stop automations
+         await stopAutomationsForLead(client._id, 'Lead replied via WhatsApp');
       }
 
       // 2. Find or create conversation
@@ -715,18 +727,14 @@ app.post('/webhook/whatsapp', async (req, res) => {
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // --- PRODUCTION SETUP ---
-// Serve static files from the React app build
-app.use(express.static(path.join(__dirname, '../../client/dist')));
-
 // API Routes (already defined above)
 
-// Catch-all route to serve the React index.html for SPA routing
+// Catch-all route for missing APIs
 app.get('*', (req, res) => {
-  // Only serve index.html if it's not an API route (which start with /api)
-  if (!req.url.startsWith('/api')) {
-    res.sendFile(path.join(__dirname, '../../client/dist/index.html'));
-  } else {
+  if (req.url.startsWith('/api')) {
     res.status(404).json({ success: false, message: 'API Route not found' });
+  } else {
+    res.status(404).send('Backend API is running. Client should be hosted separately.');
   }
 });
 

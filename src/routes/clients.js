@@ -4,6 +4,7 @@ const { protect } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { enrollLead } = require('../services/automationEngine');
 
 const router = express.Router();
 
@@ -90,6 +91,9 @@ router.post('/', protect, async (req, res) => {
       io.emit('new_lead', client);
       io.emit('new_client', client);
     }
+    
+    // Enroll in automation workflows
+    await enrollLead(client);
 
     res.status(201).json({ success: true, client });
   } catch (err) {
