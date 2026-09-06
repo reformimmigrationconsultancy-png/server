@@ -130,12 +130,89 @@ router.put('/:id', protect, async (req, res) => {
   }
 });
 
-// DELETE /api/clients/:id (archive)
+// DELETE /api/clients/:id (Permanent Delete with cascade cleanup)
 router.delete('/:id', protect, async (req, res) => {
   try {
-    await Client.findByIdAndUpdate(req.params.id, { isArchived: true });
-    res.json({ success: true, message: 'Client archived' });
+    const clientId = req.params.id;
+    const client = await Client.findById(clientId);
+    if (!client) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    const { Conversation, Message } = require('../models/Conversation');
+    const Reminder = require('../models/Reminder');
+    const AutomationExecution = require('../models/AutomationExecution');
+
+    // 1. Delete associated messages & conversations
+    const conversations = await Conversation.find({ client: clientId });
+    const convIds = conversations.map(c => c._id);
+    if (convIds.length > 0) {
+      await Message.deleteMany({ conversationId: { $in: convIds } });
+      await Conversation.deleteMany({ _id: { $in: convIds } });
+    }
+
+    // 2. Delete associated follow-ups/reminders
+    await Reminder.deleteMany({ client: clientId });
+
+    // 3. Delete automation executions
+    await AutomationExecution.deleteMany({ client: clientId });
+
+    // 4. Delete the client record
+    await Client.findByIdAndDelete(clientId);
+
+    // Broadcast socket update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('update_lead', null);
+    }
+
+    res.json({ success: true, message: `Lead '${client.fullName}' deleted successfully` });
   } catch (err) {
+    console.error('❌ Lead delete error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/clients/bulk-delete (Bulk Delete multiple selected leads)
+router.post('/bulk-delete', protect, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'No lead IDs provided for deletion' });
+    }
+
+    const { Conversation, Message } = require('../models/Conversation');
+    const Reminder = require('../models/Reminder');
+    const AutomationExecution = require('../models/AutomationExecution');
+
+    // 1. Delete conversations & messages
+    const conversations = await Conversation.find({ client: { $in: ids } });
+    const convIds = conversations.map(c => c._id);
+    if (convIds.length > 0) {
+      await Message.deleteMany({ conversationId: { $in: convIds } });
+      await Conversation.deleteMany({ _id: { $in: convIds } });
+    }
+
+    // 2. Delete follow-ups & automation executions
+    await Reminder.deleteMany({ client: { $in: ids } });
+    await AutomationExecution.deleteMany({ client: { $in: ids } });
+
+    // 3. Delete clients
+    const result = await Client.deleteMany({ _id: { $in: ids } });
+
+    // Broadcast socket update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('update_lead', null);
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} selected lead(s)`,
+      count: result.deletedCount
+    });
+  } catch (err) {
+    console.error('❌ Bulk lead delete error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
