@@ -49,6 +49,9 @@ const clientSchema = new mongoose.Schema({
 
 clientSchema.pre('save', function(next) {
   this.wasNew = this.isNew;
+  if (this.fullName && typeof this.fullName === 'string') {
+    this.fullName = this.fullName.trim().replace(/\s+/g, ' ');
+  }
   next();
 });
 
@@ -132,7 +135,7 @@ clientSchema.post('save', function(doc) {
             <p>We have successfully received your details. One of our representatives will contact you shortly.</p>
             <br/>
             <p>Best regards,</p>
-            <p>The Manpreet CRM Team</p>
+            <p><strong>Manpreet Singh</strong><br/>Business Funding & Mortgage Specialist</p>
           `;
           await sendNotificationEmail(clientSubject, 'Thank you for your interest.', clientHtml, doc.email);
         }

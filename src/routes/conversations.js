@@ -131,7 +131,7 @@ router.post('/:id/messages', protect, async (req, res) => {
               });
               
               await transporter.sendMail({
-                 from: `"Manpreet CRM" <${process.env.SMTP_USER}>`,
+                 from: `"Manpreet Singh" <${process.env.SMTP_USER}>`,
                  to: conv.client.email,
                  subject: `Following up on your inquiry`,
                  text: content
@@ -162,9 +162,9 @@ router.post('/:id/messages', protect, async (req, res) => {
        });
        
        await transporter.sendMail({
-          from: `"Lead CRM" <${process.env.SMTP_USER}>`,
+          from: `"Manpreet Singh" <${process.env.SMTP_USER}>`,
           to: conv.client.email,
-          subject: `Re: Conversation with Lead CRM`,
+          subject: `Re: Follow-up regarding your inquiry`,
           text: content
        });
        console.log(`✅ Email outbound message sent to ${conv.client.email}`);
