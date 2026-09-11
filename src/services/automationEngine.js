@@ -166,8 +166,44 @@ const runEngine = async () => {
   }
 };
 
+const ensureDefaultAutomation = async () => {
+  try {
+    const count = await Automation.countDocuments({ trigger: 'new_lead', isActive: true });
+    if (count === 0) {
+      const admin = await User.findOne({ role: 'admin' });
+      await Automation.create({
+        name: '⚡ Auto Lead Follow-up Workflow',
+        description: 'Automatically schedules an urgent follow-up task as soon as a new lead enters the CRM.',
+        trigger: 'new_lead',
+        triggerConditions: { source: 'all' },
+        stopConditions: { stopOnReply: true, stopOnStage: ['contacted', 'closed'] },
+        isActive: true,
+        status: 'active',
+        steps: [
+          {
+            order: 1,
+            action: 'create_task',
+            config: {
+              title: '⚡ Initial Contact Call: {{fullName}}',
+              dueInValue: 15,
+              dueInUnit: 'minutes',
+              priority: 'high',
+              notes: 'Reach out to new lead received via {{source}}.'
+            }
+          }
+        ],
+        createdBy: admin ? admin._id : undefined
+      });
+      console.log('✨ [Automation Engine] Created default active Auto Lead Follow-up Workflow!');
+    }
+  } catch (err) {
+    console.warn('⚠️ Default automation check failed:', err.message);
+  }
+};
+
 const startEngine = () => {
   console.log('🚀 [Automation Engine] Starting persistent scheduler...');
+  ensureDefaultAutomation();
   // Run every 1 minute
   setInterval(runEngine, 60 * 1000);
   
@@ -175,10 +211,21 @@ const startEngine = () => {
   setTimeout(runEngine, 5000);
 };
 
-const enrollLead = async (client) => {
+const enrollLead = async (client, app = null) => {
   try {
-    // Find automations that match
-    // For simplicity, we check triggers: 'new_lead'
+    const admin = await User.findOne({ role: 'admin' });
+
+    // 1. Core Auto Follow-up (Disabled per user request)
+    /*
+    if (admin) {
+      const existingTask = await Reminder.findOne({ client: client._id, status: 'pending' });
+      if (!existingTask) {
+        ...
+      }
+    }
+    */
+
+    // 2. Enroll in active matching custom automations
     const matchingAutomations = await Automation.find({ 
       isActive: true, 
       trigger: 'new_lead'
@@ -191,7 +238,6 @@ const enrollLead = async (client) => {
       }
 
       if (match) {
-        // Enroll
         try {
           await AutomationExecution.create({
             client: client._id,
@@ -202,10 +248,14 @@ const enrollLead = async (client) => {
           });
           console.log(`✅ [Automation] Enrolled lead ${client.fullName} in automation: ${auto.name}`);
         } catch (dupErr) {
-          // Ignore duplicate enrollment error due to unique index
+          // Ignore duplicate enrollment error
         }
       }
     }
+
+    // 3. Immediately run engine so steps execute in real time without waiting 60s
+    setTimeout(runEngine, 500);
+
   } catch (err) {
     console.error('❌ [Automation] Enrollment error:', err.message);
   }
@@ -228,5 +278,6 @@ const stopAutomationsForLead = async (clientId, reason) => {
 module.exports = {
   startEngine,
   enrollLead,
-  stopAutomationsForLead
+  stopAutomationsForLead,
+  runEngine
 };

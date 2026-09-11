@@ -208,8 +208,8 @@ router.post('/test-send', auth, async (req, res) => {
     // Append explicit test mode header
     const testHeaderHtml = `
       <div style="background-color: #fef3c7; border: 1px solid #f59e0b; color: #92400e; padding: 10px 16px; border-radius: 8px; font-family: Arial, sans-serif; font-size: 12px; margin-bottom: 16px;">
-        <strong>⚠️ CRM TEST MODE EMAIL</strong><br/>
-        This is a test email preview generated from the CRM Email Template Center.
+        <strong>⚠️ TEST PREVIEW MODE</strong><br/>
+        This is a test email preview generated from the Email Template Center.
         ${lead ? `<br/><em>Rendered using Lead: ${lead.fullName || lead.email}</em>` : '<br/><em>Rendered using Sample Data</em>'}
       </div>
     `;
@@ -225,12 +225,12 @@ router.post('/test-send', auth, async (req, res) => {
         html: finalHtml,
         text: renderedBody,
         from: process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com',
-        fromName: 'CRM Test Mode'
+        fromName: 'Manpreet Singh'
       });
     } else {
       const transporter = getTransporter();
       await transporter.sendMail({
-        from: `"CRM Test Mode" <${process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com'}>`,
+        from: `"Manpreet Singh" <${process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com'}>`,
         to: recipientEmail,
         subject: `[TEST EMAIL] ${renderedSubject}`,
         html: finalHtml

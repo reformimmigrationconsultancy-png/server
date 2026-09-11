@@ -115,7 +115,7 @@ router.post('/send', protect, async (req, res) => {
         html: finalBody.replace(/\n/g, '<br>'),
         text: finalBody,
         from: process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com',
-        fromName: 'Lead CRM'
+        fromName: 'Manpreet Singh'
       });
       
       if (!response.data || !response.data.success) {
@@ -125,7 +125,7 @@ router.post('/send', protect, async (req, res) => {
     } else {
       const transporter = getTransporter();
       await transporter.sendMail({
-        from: `"Lead CRM" <${process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com'}>`,
+        from: `"Manpreet Singh" <${process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com'}>`,
         to: recipientEmail,
         subject: finalSubject,
         text: finalBody,
