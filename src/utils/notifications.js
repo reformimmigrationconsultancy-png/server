@@ -16,7 +16,7 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
         html: finalHtml,
         text: text,
         from: process.env.SMTP_USER || 'mortgagewithmanpreet@gmail.com',
-        fromName: 'Manpreet Singh'
+        fromName: 'Maninder Pal Singh'
       });
       if (response.data && response.data.success) {
         console.log(`✅ PHP Mailer success: ${subject}`);
@@ -47,7 +47,7 @@ const sendNotificationEmail = async (subject, text, html, toEmail = null) => {
     });
 
     const mailOptions = {
-      from: `"Manpreet Singh" <${smtpUser}>`,
+      from: `"Maninder Pal Singh" <${smtpUser}>`,
       to: to,
       subject: subject,
       text: text,

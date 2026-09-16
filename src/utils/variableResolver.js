@@ -14,7 +14,7 @@ const SUPPORTED_VARIABLES = {
   'lead_source': { keys: ['lead_source', 'leadSource', 'source'], label: 'Lead Source', defaultFallback: 'Direct Enquiry' },
   'lead_stage': { keys: ['lead_stage', 'leadStage', 'stage'], label: 'Lead Stage', defaultFallback: 'New Lead' },
   'assigned_to': { keys: ['assigned_to', 'assignedTo'], label: 'Assigned Agent', defaultFallback: 'Support Team' },
-  'admin_name': { keys: ['admin_name', 'adminName'], label: 'Admin Name', defaultFallback: 'Manpreet Singh' }
+  'admin_name': { keys: ['admin_name', 'adminName'], label: 'Admin Name', defaultFallback: 'Maninder Pal Singh' }
 };
 
 /**
@@ -69,7 +69,7 @@ function resolveVariables(text, lead = null, admin = null, options = {}) {
     assignedTo = admin.name;
   }
 
-  const adminName = admin?.name || options.defaultAdminName || 'Manpreet Singh';
+  const adminName = admin?.name || options.defaultAdminName || 'Maninder Pal Singh';
 
   // Map of canonical variable keys to actual values (with fallbacks)
   const variableMap = {
@@ -163,7 +163,7 @@ function getResolvedVariableDictionary(lead = null, admin = null) {
     'Lead Source ({{lead_source}})': lead?.source || 'Direct Enquiry',
     'Lead Stage ({{lead_stage}})': lead?.stage || 'New Lead',
     'Assigned To ({{assigned_to}})': assignedTo,
-    'Admin Name ({{admin_name}})': admin?.name || 'Manpreet Singh'
+    'Admin Name ({{admin_name}})': admin?.name || 'Maninder Pal Singh'
   };
 }
 

@@ -789,11 +789,11 @@ async function runMetaLeadsSync() {
 }
 
 // Start auto-sync on server boot (wait 10 seconds to allow server to fully initialize)
-setTimeout(() => {
-  runMetaLeadsSync();
-  // Run every 10 minutes (600,000 ms)
-  setInterval(runMetaLeadsSync, 10 * 60 * 1000);
-}, 10000);
+// setTimeout(() => {
+//   runMetaLeadsSync();
+//   // Run every 10 minutes (600,000 ms)
+//   setInterval(runMetaLeadsSync, 10 * 60 * 1000);
+// }, 10000);
 
 // Render 24/7 Keep-Alive Self-Ping Service
 const axios = require('axios');

@@ -225,12 +225,12 @@ router.post('/test-send', auth, async (req, res) => {
         html: finalHtml,
         text: renderedBody,
         from: process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com',
-        fromName: 'Manpreet Singh'
+        fromName: 'Maninder Pal Singh'
       });
     } else {
       const transporter = getTransporter();
       await transporter.sendMail({
-        from: `"Manpreet Singh" <${process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com'}>`,
+        from: `"Maninder Pal Singh" <${process.env.SMTP_USER || process.env.IMAP_USER || 'mortgagewithmanpreet@gmail.com'}>`,
         to: recipientEmail,
         subject: `[TEST EMAIL] ${renderedSubject}`,
         html: finalHtml

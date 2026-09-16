@@ -7,13 +7,13 @@ const connectDB = async () => {
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
 
     // Auto-seed default admin account if it does not exist
-    const adminEmail = 'mortgagewithmanpreet@gmail.com';
+    const adminEmail = 'admin@crm.com';
     const adminExists = await User.findOne({ email: adminEmail });
     if (!adminExists) {
       await User.create({
-        name: 'Manpreet Singh',
+        name: 'Maninder Pal Singh',
         email: adminEmail,
-        password: 'password123',
+        password: '123456',
         role: 'admin'
       });
       console.log('✅ Default admin account seeded successfully');

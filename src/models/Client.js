@@ -135,7 +135,7 @@ clientSchema.post('save', function(doc) {
             <p>We have successfully received your details. One of our representatives will contact you shortly.</p>
             <br/>
             <p>Best regards,</p>
-            <p><strong>Manpreet Singh</strong><br/>Business Funding & Mortgage Specialist</p>
+            <p><strong>Maninder Pal Singh</strong><br/>Business Funding & Mortgage Specialist</p>
           `;
           await sendNotificationEmail(clientSubject, 'Thank you for your interest.', clientHtml, doc.email);
         }
