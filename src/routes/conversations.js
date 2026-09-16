@@ -131,7 +131,7 @@ router.post('/:id/messages', protect, async (req, res) => {
               });
               
               await transporter.sendMail({
-                 from: `"Manpreet Singh" <${process.env.SMTP_USER}>`,
+                 from: `"Maninder Pal Singh" <${process.env.SMTP_USER}>`,
                  to: conv.client.email,
                  subject: `Following up on your inquiry`,
                  text: content
@@ -162,7 +162,7 @@ router.post('/:id/messages', protect, async (req, res) => {
        });
        
        await transporter.sendMail({
-          from: `"Manpreet Singh" <${process.env.SMTP_USER}>`,
+          from: `"Maninder Pal Singh" <${process.env.SMTP_USER}>`,
           to: conv.client.email,
           subject: `Re: Follow-up regarding your inquiry`,
           text: content
