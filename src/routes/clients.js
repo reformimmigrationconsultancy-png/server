@@ -52,14 +52,14 @@ router.get('/', protect, async (req, res) => {
     triggerBackgroundLeadSync(req.app);
 
     const { stage, source, search, page = 1, limit = 20 } = req.query;
-    // Strictly restrict to Meta Lead Ads (Facebook & Instagram) and manual deals. Exclude direct message contacts completely.
+    // Strictly restrict to Meta Lead Ads, portal submissions, and manual deals. Exclude direct message contacts completely.
     const filter = { 
       isArchived: { $ne: true }, 
-      source: { $in: ['facebook', 'instagram', 'manual'] },
+      source: { $in: ['facebook', 'instagram', 'manual', 'portal', 'website'] },
       platformContactId: { $exists: false }
     };
     if (stage) filter.stage = stage;
-    if (source && ['facebook', 'instagram', 'manual'].includes(source)) filter.source = source;
+    if (source && ['facebook', 'instagram', 'manual', 'portal', 'website'].includes(source)) filter.source = source;
     if (search) {
       filter.$or = [
         { fullName: { $regex: search, $options: 'i' } },
