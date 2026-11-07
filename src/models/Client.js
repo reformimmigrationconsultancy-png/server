@@ -6,7 +6,7 @@ const clientSchema = new mongoose.Schema({
   phone: { type: String, trim: true },
   source: {
     type: String,
-    enum: ['whatsapp', 'facebook', 'instagram', 'email', 'website', 'call', 'manual', 'google'],
+    enum: ['whatsapp', 'facebook', 'instagram', 'email', 'website', 'call', 'manual', 'google', 'portal'],
     default: 'manual'
   },
   platformContactId: { type: String }, // PSID for Facebook, Phone for WhatsApp
@@ -44,6 +44,38 @@ const clientSchema = new mongoose.Schema({
   loanAmount: { type: Number },
   propertyValue: { type: Number },
   address: { type: String },
+  city: { type: String },
+  state: { type: String },
+  postalCode: { type: String },
+  country: { type: String, default: 'India' },
+  employmentStatus: { type: String },
+  annualIncome: { type: Number },
+  serviceType: { type: String },
+  clientNotes: { type: String },
+  visaDetails: {
+    visaType: { type: String },
+    targetCountry: { type: String },
+    dob: { type: String },
+    gender: { type: String },
+    passportNumber: { type: String },
+    passportExpiry: { type: String },
+    maritalStatus: { type: String },
+    highestEducation: { type: String },
+    fieldOfStudy: { type: String },
+    passingYear: { type: String },
+    percentageOrCgpa: { type: String },
+    englishTest: { type: String },
+    overallScore: { type: String },
+    workExperienceYears: { type: String },
+    currentJobTitle: { type: String },
+    hasVisaRefusal: { type: String },
+    refusalDetails: { type: String },
+    budgetOrFunds: { type: String },
+    comments: { type: String }
+  },
+  portalToken: { type: String, unique: true, sparse: true, index: true },
+  portalStatus: { type: String, enum: ['pending', 'submitted'], default: 'pending' },
+  portalSubmittedAt: { type: Date },
   isArchived: { type: Boolean, default: false },
 }, { timestamps: true });
 
@@ -51,6 +83,10 @@ clientSchema.pre('save', function(next) {
   this.wasNew = this.isNew;
   if (this.fullName && typeof this.fullName === 'string') {
     this.fullName = this.fullName.trim().replace(/\s+/g, ' ');
+  }
+  if (!this.portalToken) {
+    const crypto = require('crypto');
+    this.portalToken = crypto.randomBytes(16).toString('hex');
   }
   next();
 });
