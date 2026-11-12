@@ -486,6 +486,13 @@ class MessengerService {
           const leads = leadsData?.data || [];
           
           for (const rawLead of leads) {
+            // Strictly ignore old leads (prior to November 2026) so only fresh leads are ever synced
+            const leadCreated = new Date(rawLead.created_time || Date.now());
+            const CUTOFF_DATE = new Date(process.env.LEADS_SYNC_CUTOFF || '2026-11-01T00:00:00Z');
+            if (leadCreated < CUTOFF_DATE) {
+              continue;
+            }
+
             const leadDetails = {
               externalId: rawLead.id,
               createdTime: rawLead.created_time || new Date(),

@@ -48,9 +48,6 @@ function triggerBackgroundLeadSync(app) {
 // GET /api/clients
 router.get('/', protect, async (req, res) => {
   try {
-    // Trigger background sync in a non-blocking way
-    triggerBackgroundLeadSync(req.app);
-
     const { stage, source, search, page = 1, limit = 20 } = req.query;
     // Strictly restrict to Meta Lead Ads, portal submissions, and manual deals. Exclude direct message contacts completely.
     const filter = { 
