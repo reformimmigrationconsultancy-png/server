@@ -573,7 +573,7 @@ class MessengerService {
                     rawData: leadDetails.rawData,
                     webhookTimestamp: new Date(leadDetails.createdTime)
                   },
-                  notes: [{ content: `✨ Lead generated from Meta Leadgen Form: "${leadDetails.formName}"` }]
+                  notes: [{ content: `Lead generated from Meta Leadgen Form: "${leadDetails.formName}"` }]
                 });
                 totalSynced++;
                 console.log(`✅ [MessengerService] Created new Client: ${client.fullName} (${client._id})`);
