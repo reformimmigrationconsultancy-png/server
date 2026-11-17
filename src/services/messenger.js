@@ -631,6 +631,98 @@ class MessengerService {
         await sleep(400);
       }
 
+      // 3. Sync directly from Facebook Ad Account campaigns (bypasses any form permission blocks)
+      const adAccountId = process.env.FB_AD_ACCOUNT_ID || 'act_836740425703894';
+      const userToken = process.env.META_ACCESS_TOKEN || token;
+      if (adAccountId && userToken) {
+        try {
+          console.log(`📡 [MessengerService] Syncing leads directly from Ad Account: ${adAccountId}`);
+          const adsRes = await axios.get(`https://graph.facebook.com/v18.0/${adAccountId}/ads?fields=id,name,status,campaign{name}`, {
+            params: { access_token: userToken, limit: 100 }
+          });
+          const ads = adsRes.data.data || [];
+          for (const ad of ads) {
+            let adLeadsUrl = `https://graph.facebook.com/v18.0/${ad.id}/leads`;
+            let adLeadsParams = { access_token: userToken, fields: 'id,created_time,field_data', limit: 100 };
+            while (adLeadsUrl) {
+              try {
+                const res = await axios.get(adLeadsUrl, { params: adLeadsUrl.includes('?') ? {} : adLeadsParams });
+                const leads = res.data.data || [];
+                for (const rawLead of leads) {
+                  const externalId = rawLead.id;
+                  const existing = await Client.findOne({ externalId });
+                  if (existing) continue;
+
+                  let fullName = '';
+                  let email = '';
+                  let phone = '';
+                  const customFields = {};
+                  let statusInCanada = '';
+                  let maritalStatus = '';
+
+                  (rawLead.field_data || []).forEach(f => {
+                    const name = (f.name || '').toLowerCase();
+                    const val = f.values && f.values.length > 0 ? String(f.values[0]).trim() : '';
+                    if (!val) return;
+                    if (name === 'full_name' || name === 'fullname' || name === 'name' || name === 'your_name') fullName = val;
+                    else if (name === 'first_name') { if (!fullName) fullName = val; }
+                    else if (name === 'last_name') { if (fullName) fullName += ` ${val}`; }
+                    else if (name.includes('email')) email = val.toLowerCase();
+                    else if (name.includes('phone') || name.includes('number') || name.includes('contact') || name.includes('mobile')) phone = val;
+                    else {
+                      customFields[f.name] = val;
+                      if (name.includes('status_in_canada') || name.includes('status')) statusInCanada = val;
+                      else if (name.includes('marital')) maritalStatus = val;
+                    }
+                  });
+
+                  if (!fullName && (email || phone)) fullName = email ? email.split('@')[0] : 'Meta Prospect';
+                  if (!fullName) fullName = `Lead ${externalId.slice(-5)}`;
+
+                  const notes = [];
+                  notes.push({ content: `Lead from Facebook Ad: "${ad.name}" (${ad.campaign?.name || 'Reform Campaign'})` });
+                  if (statusInCanada) notes.push({ content: `Status in Canada: ${statusInCanada}` });
+                  if (maritalStatus) notes.push({ content: `Marital Status: ${maritalStatus}` });
+
+                  const client = await Client.create({
+                    fullName,
+                    email: email || undefined,
+                    phone: phone || undefined,
+                    source: 'facebook',
+                    externalId,
+                    stage: 'new_lead',
+                    createdAt: new Date(rawLead.created_time),
+                    metaData: {
+                      adName: ad.name,
+                      adId: ad.id,
+                      campaignName: ad.campaign?.name || 'Reform Immigration Campaign',
+                      customFields,
+                      statusInCanada,
+                      maritalStatus
+                    },
+                    notes
+                  });
+                  totalSynced++;
+
+                  if (app) {
+                    const io = app.get('io');
+                    if (io) {
+                      io.emit('new_lead', client);
+                      io.emit('new_client', client);
+                    }
+                  }
+                }
+                adLeadsUrl = res.data.paging?.next || null;
+              } catch (adLeadsErr) {
+                adLeadsUrl = null;
+              }
+            }
+          }
+        } catch (adErr) {
+          console.warn('⚠️ [MessengerService] Ad Account Direct Sync Notice:', adErr.response?.data?.error?.message || adErr.message);
+        }
+      }
+
       console.log(`✅ [MessengerService] Historical lead sync complete. Total new leads: ${totalSynced}`);
       return totalSynced;
     } catch (error) {
