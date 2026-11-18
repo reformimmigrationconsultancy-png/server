@@ -14,8 +14,8 @@ const clientSchema = new mongoose.Schema({
 
   stage: {
     type: String,
-    enum: ['new_lead', 'contacted', 'interested', 'documents_received', 'approved', 'closed'],
-    default: 'new_lead'
+    default: 'new_lead',
+    index: true
   },
   metaData: {
     campaignName: String,
