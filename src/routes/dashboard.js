@@ -14,6 +14,10 @@ router.get('/stats', protect, async (req, res) => {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
+    const isScoped = req.user.role !== 'admin' && !req.user.permissions?.viewAllLeads;
+    const baseClientFilter = { isArchived: { $ne: true }, ...(isScoped ? { assignedTo: req.user._id } : {}) };
+    const baseReminderFilter = isScoped ? { assignedTo: req.user._id } : {};
+
     const [
       totalLeads,
       newLeads,
@@ -28,26 +32,28 @@ router.get('/stats', protect, async (req, res) => {
       overdueFollowUps,
       dueTodayFollowUps,
     ] = await Promise.all([
-      Client.countDocuments({ isArchived: false }),
-      Client.countDocuments({ isArchived: false, stage: 'new_lead' }),
-      Client.countDocuments({ isArchived: false, stage: 'contacted' }),
-      Client.countDocuments({ isArchived: false, stage: 'interested' }),
-      Client.countDocuments({ isArchived: false, stage: 'documents_received' }),
-      Client.countDocuments({ isArchived: false, stage: 'approved' }),
-      Client.countDocuments({ isArchived: false, stage: 'closed' }),
+      Client.countDocuments(baseClientFilter),
+      Client.countDocuments({ ...baseClientFilter, stage: 'new_lead' }),
+      Client.countDocuments({ ...baseClientFilter, stage: 'contacted' }),
+      Client.countDocuments({ ...baseClientFilter, stage: 'interested' }),
+      Client.countDocuments({ ...baseClientFilter, stage: 'documents_received' }),
+      Client.countDocuments({ ...baseClientFilter, stage: 'approved' }),
+      Client.countDocuments({ ...baseClientFilter, stage: 'closed' }),
       Client.aggregate([
-        { $match: { isArchived: false } },
+        { $match: baseClientFilter },
         { $group: { _id: '$source', count: { $sum: 1 } } },
       ]),
       Call.find({}).populate('client', 'fullName').sort({ callTime: -1 }).limit(5),
       Conversation.countDocuments({ status: 'open' }),
       Reminder.countDocuments({
+        ...baseReminderFilter,
         isCompleted: false,
         status: { $ne: 'completed' },
         dueDate: { $lt: startOfToday },
         $or: [{ snoozedUntil: { $exists: false } }, { snoozedUntil: null }, { snoozedUntil: { $lte: now } }]
       }),
       Reminder.countDocuments({
+        ...baseReminderFilter,
         isCompleted: false,
         status: { $ne: 'completed' },
         dueDate: { $gte: startOfToday, $lte: endOfToday }

@@ -8,6 +8,16 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['admin', 'staff'], default: 'staff' },
   avatar: { type: String, default: '' },
   isActive: { type: Boolean, default: true },
+  permissions: {
+    viewAllLeads: { type: Boolean, default: false }, // false = Only assigned leads
+    editLeads: { type: Boolean, default: true },
+    deleteLeads: { type: Boolean, default: false },
+    exportLeads: { type: Boolean, default: false },
+    viewFinancials: { type: Boolean, default: false },
+    manageFollowUps: { type: Boolean, default: true },
+    accessAutomations: { type: Boolean, default: false },
+    accessSettings: { type: Boolean, default: false },
+  },
 }, { timestamps: true });
 
 userSchema.pre('save', async function () {

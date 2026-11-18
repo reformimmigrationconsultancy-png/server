@@ -48,21 +48,40 @@ function triggerBackgroundLeadSync(app) {
 // GET /api/clients
 router.get('/', protect, async (req, res) => {
   try {
-    const { stage, source, search, page = 1, limit = 20 } = req.query;
+    const { stage, source, search, assignedTo, page = 1, limit = 20 } = req.query;
     // Strictly restrict to Meta Lead Ads, portal submissions, and manual deals. Exclude direct message contacts completely.
     const filter = { 
       isArchived: { $ne: true }, 
       source: { $in: ['facebook', 'instagram', 'manual', 'portal', 'website'] },
       platformContactId: { $exists: false }
     };
+
+    // Scoping for Staff: if staff doesn't have viewAllLeads permission, restrict strictly to assigned leads
+    if (req.user.role !== 'admin' && !req.user.permissions?.viewAllLeads) {
+      filter.assignedTo = req.user._id;
+    } else if (assignedTo) {
+      if (assignedTo === 'unassigned') {
+        filter.$or = [{ assignedTo: { $exists: false } }, { assignedTo: null }];
+      } else if (assignedTo !== 'all') {
+        filter.assignedTo = assignedTo;
+      }
+    }
+
     if (stage) filter.stage = stage;
     if (source && ['facebook', 'instagram', 'manual', 'portal', 'website'].includes(source)) filter.source = source;
     if (search) {
-      filter.$or = [
-        { fullName: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
+      const searchRegex = { $regex: search, $options: 'i' };
+      const searchConditions = [
+        { fullName: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
       ];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchConditions }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchConditions;
+      }
     }
     const total = await Client.countDocuments(filter);
     const clients = await Client.find(filter)
@@ -105,6 +124,15 @@ router.get('/:id', protect, async (req, res) => {
       .populate('assignedTo', 'name email')
       .populate('notes.createdBy', 'name');
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
+
+    // Scoping for Staff: verify lead is assigned to user if viewAllLeads is false
+    if (req.user.role !== 'admin' && !req.user.permissions?.viewAllLeads) {
+      const assignedId = client.assignedTo?._id || client.assignedTo;
+      if (!assignedId || String(assignedId) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: 'Access denied: You can only view leads assigned to you.' });
+      }
+    }
+
     res.json({ success: true, client });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -114,7 +142,12 @@ router.get('/:id', protect, async (req, res) => {
 // PUT /api/clients/:id
 router.put('/:id', protect, async (req, res) => {
   try {
-    const client = await Client.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (req.user.role !== 'admin' && !req.user.permissions?.editLeads) {
+      return res.status(403).json({ success: false, message: 'Permission denied: You do not have permission to edit leads.' });
+    }
+
+    const client = await Client.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+      .populate('assignedTo', 'name email');
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
     const io = req.app.get('io');
     if (io) {
@@ -130,6 +163,10 @@ router.put('/:id', protect, async (req, res) => {
 // DELETE /api/clients/:id (Permanent Delete with cascade cleanup)
 router.delete('/:id', protect, async (req, res) => {
   try {
+    if (req.user.role !== 'admin' && !req.user.permissions?.deleteLeads) {
+      return res.status(403).json({ success: false, message: 'Permission denied: You do not have permission to delete leads.' });
+    }
+
     const clientId = req.params.id;
     const client = await Client.findById(clientId);
     if (!client) {
@@ -173,6 +210,10 @@ router.delete('/:id', protect, async (req, res) => {
 // POST /api/clients/bulk-delete (Bulk Delete multiple selected leads)
 router.post('/bulk-delete', protect, async (req, res) => {
   try {
+    if (req.user.role !== 'admin' && !req.user.permissions?.deleteLeads) {
+      return res.status(403).json({ success: false, message: 'Permission denied: You do not have permission to delete leads.' });
+    }
+
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ success: false, message: 'No lead IDs provided for deletion' });
@@ -210,6 +251,39 @@ router.post('/bulk-delete', protect, async (req, res) => {
     });
   } catch (err) {
     console.error('❌ Bulk lead delete error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/clients/bulk-assign (Assign multiple leads to an employee)
+router.post('/bulk-assign', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin' && !req.user.permissions?.editLeads) {
+      return res.status(403).json({ success: false, message: 'Permission denied: You do not have permission to assign leads.' });
+    }
+
+    const { ids, assignedTo } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'No lead IDs provided for assignment' });
+    }
+
+    if (assignedTo && assignedTo !== 'unassigned') {
+      await Client.updateMany({ _id: { $in: ids } }, { $set: { assignedTo } });
+    } else {
+      await Client.updateMany({ _id: { $in: ids } }, { $unset: { assignedTo: 1 } });
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('update_lead', null);
+    }
+
+    res.json({
+      success: true,
+      message: `Successfully updated assignment for ${ids.length} lead(s)`
+    });
+  } catch (err) {
+    console.error('❌ Bulk assign error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -261,6 +335,10 @@ router.post('/sync-meta-leads', protect, async (req, res) => {
 // POST /api/clients/clear-all-leads (Wipes all old leads, conversations, messages, and logs)
 router.post('/clear-all-leads', protect, async (req, res) => {
   try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Admin access required to clear leads.' });
+    }
+
     const { Conversation, Message } = require('../models/Conversation');
     const WebhookLog = require('../models/WebhookLog');
 
